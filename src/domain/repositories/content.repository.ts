@@ -1,12 +1,24 @@
 import { PaginatedResult } from '@shared/constants/types';
-import { Content, ContentAnalytics, ContentFilters, ContentWithTopics, UserProgress, AbandonmentAnalytics, EffectivenessAnalytics, ProblematicContent, InteractionLog, Tip, Topic } from '../entities/content.entity';
+import { 
+  Content, 
+  ContentAnalytics, 
+  ContentFilters, 
+  ContentWithTopics, 
+  UserProgress, 
+  AbandonmentAnalytics, 
+  EffectivenessAnalytics, 
+  ProblematicContent, 
+  ContentInteractionLog,
+  Tip, 
+  Topic 
+} from '../entities/content.entity';
 
 export interface IContentRepository {
   // Content CRUD operations
   findById(id: string): Promise<ContentWithTopics | null>;
   findMany(filters: ContentFilters): Promise<PaginatedResult<ContentWithTopics>>;
-  create(data: Omit<Content, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<Content>;
-  update(id: string, data: Partial<Omit<Content, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>>): Promise<Content>;
+  create(data: Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Content>;
+  update(id: string, data: Partial<Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Content>;
   delete(id: string): Promise<boolean>;
   
   // Content-Topic relationship
@@ -50,16 +62,16 @@ export interface IContentRepository {
   
   // Topic operations
   getAllTopics(): Promise<Topic[]>;
-  createTopic(data: Omit<Topic, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<Topic>;
+  createTopic(data: Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Topic>;
   getTopicById(id: string): Promise<Topic | null>;
-  updateTopic(id: string, data: Partial<Omit<Topic, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>>): Promise<Topic>;
+  updateTopic(id: string, data: Partial<Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Topic>;
   deleteTopic(id: string): Promise<boolean>;
   
   // Tip operations
   getAllTips(): Promise<Tip[]>;
-  createTip(data: Omit<Tip, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<Tip>;
+  createTip(data: Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Tip>;
   getTipById(id: string): Promise<Tip | null>;
-  updateTip(id: string, data: Partial<Omit<Tip, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>>): Promise<Tip>;
+  updateTip(id: string, data: Partial<Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Tip>;
   deleteTip(id: string): Promise<boolean>;
   findTopics(): Promise<Array<{ id: string; name: string; }>>;
   findTopicById(id: string): Promise<{ id: string; name: string; } | null>;
@@ -73,5 +85,5 @@ export interface IContentRepository {
     timeSpentSeconds: number;
   }>): Promise<void>;
   
-  bulkLogInteractions(interactions: Array<Omit<InteractionLog, 'id' | 'actionTimestamp'>>): Promise<void>;
+  bulkLogInteractions(interactions: Array<Omit<ContentInteractionLog, 'id' | 'actionTimestamp'>>): Promise<void>;
 }

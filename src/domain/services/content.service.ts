@@ -3,12 +3,27 @@ import { IContentService } from '@application/ports/content.service.port';
 import { TYPES } from '@shared/constants/types';
 import { IContentRepository } from '@domain/repositories/content.repository';
 import { logger } from '@shared/utils/logger';
-import { ApiError } from '@shared/middlewares/error.middleware';
-import { Content, ContentWithTopics, Topic, Tip, ContentAnalytics, AbandonmentAnalytics, EffectivenessAnalytics, ProblematicContent, ContentProgress, UserProgress, AbandonmentReason, CameFromType } from '../entities/content.entity';
-import { CreateContentDto, UpdateContentDto, TrackProgressDto, TrackInteractionDto } from '@infrastructure/web/content/dto/content.dto';
-import { InteractionAction, DeviceType, PlatformType } from '../enums/content.enum';
-import { InteractionLogResponse } from '@application/dto';
-import { ContentInteractionLog } from '@prisma/client';
+import { 
+  Content, 
+  ContentWithTopics, 
+  Topic, 
+  Tip, 
+  ContentAnalytics, 
+  AbandonmentAnalytics, 
+  EffectivenessAnalytics, 
+  ProblematicContent, 
+  UserProgress, 
+  ContentInteractionLog,
+  InteractionAction,
+  DeviceType,
+  PlatformType,
+  AbandonmentReason,
+  CameFromType
+} from '../entities/content.entity';
+
+// Define DTOs
+interface CreateContentDto extends Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> {}
+interface UpdateContentDto extends Partial<Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>> {}
 
 @injectable()
 export class ContentService implements IContentService {
@@ -84,45 +99,51 @@ export class ContentService implements IContentService {
   }
 
   // Interaction logging
-  async trackInteraction(interactionData: {
+  async logInteraction(interactionData: {
     userId: string;
     contentId: string;
-    sessionId: string;
-    action: string;
-    progressAtAction: number;
-    timeSpentSeconds: number;
-    deviceType: string | null;
-    platform: string | null;
-    abandonmentReason: string | null;
-    cameFrom: string | null;
-    metadata: Record<string, any> | null;
+    action: InteractionAction;
+    timestamp: Date;
+    deviceType?: DeviceType;
+    platformType?: PlatformType;
+    metadata?: Record<string, any>;
+    cameFrom?: 'home' | 'search' | 'recommendation' | 'topic';
+    searchQuery?: string;
+    topicId?: string;
+    recommendationSource?: string;
+    sessionId?: string;
+    progressAtAction?: number;
+    timeSpentSeconds?: number;
   }): Promise<ContentInteractionLog> {
-    if (!interactionData.userId || !interactionData.contentId || !interactionData.sessionId) {
-      throw new Error('userId, contentId y sessionId son requeridos');
+    const {
+      userId,
+      contentId,
+      action,
+      timestamp,
+      deviceType,
+      platformType,
+      ...rest
+    } = interactionData;
+
+    if (!userId || !contentId || !action) {
+      throw new Error('userId, contentId y action son requeridos');
     }
 
-    const interaction = {
-      userId: interactionData.userId,
-      contentId: interactionData.contentId,
-      sessionId: interactionData.sessionId,
-      action: interactionData.action as InteractionAction,
-      progressAtAction: interactionData.progressAtAction,
-      timeSpentSeconds: interactionData.timeSpentSeconds,
-      deviceType: interactionData.deviceType as DeviceType | null,
-      platform: interactionData.platform as PlatformType | null,
-      abandonmentReason: interactionData.abandonmentReason as AbandonmentReason | null,
-      cameFrom: interactionData.cameFrom as CameFromType | null,
-      metadata: interactionData.metadata
-    };
-    
-    return await this.contentRepository.logInteraction(interaction);
-  }
-
-  async getAnalyticsByTopic(topicId: string): Promise<ContentAnalytics> {
-    if (!topicId) {
-      throw new Error('ID del tema es requerido');
-    }
-    return this.contentRepository.getContentAnalytics(topicId);
+    return this.contentRepository.logInteraction({
+      userId,
+      contentId,
+      action,
+      deviceType: deviceType || null,
+      platform: platformType || null,
+      ...rest,
+      sessionId: rest.sessionId || `session-${Date.now()}`,
+      progressAtAction: rest.progressAtAction ?? 0,
+      timeSpentSeconds: rest.timeSpentSeconds ?? 0,
+      actionTimestamp: timestamp,
+      abandonmentReason: null,
+      cameFrom: rest.cameFrom as CameFromType || null,
+      metadata: rest.metadata || null
+    });
   }
 
   async getAbandonmentAnalytics(contentId: string): Promise<any> {
@@ -153,7 +174,8 @@ export class ContentService implements IContentService {
   }
 
   async getContentById(id: string): Promise<Content | null> {
-    return this.contentRepository.findById(id);
+    const content = await this.contentRepository.findById(id);
+    return content as Content | null;
   }
 
   async updateContent(id: string, data: UpdateContentDto): Promise<Content> {
@@ -169,7 +191,7 @@ export class ContentService implements IContentService {
     return this.contentRepository.getAllTips();
   }
 
-  async createTip(data: Omit<Tip, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<Tip> {
+  async createTip(data: Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Tip> {
     return this.contentRepository.createTip(data);
   }
 
@@ -177,7 +199,7 @@ export class ContentService implements IContentService {
     return this.contentRepository.getTipById(id);
   }
 
-  async updateTip(id: string, data: Partial<Omit<Tip, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>>): Promise<Tip> {
+  async updateTip(id: string, data: Partial<Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Tip> {
     return this.contentRepository.updateTip(id, data);
   }
 
@@ -190,7 +212,7 @@ export class ContentService implements IContentService {
     return this.contentRepository.getAllTopics();
   }
 
-  async createTopic(data: Omit<Topic, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>): Promise<Topic> {
+  async createTopic(data: Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Topic> {
     return this.contentRepository.createTopic(data);
   }
 
@@ -198,55 +220,12 @@ export class ContentService implements IContentService {
     return this.contentRepository.getTopicById(id);
   }
 
-  async updateTopic(id: string, data: Partial<Omit<Topic, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>>): Promise<Topic> {
+  async updateTopic(id: string, data: Partial<Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Topic> {
     return this.contentRepository.updateTopic(id, data);
   }
 
   async deleteTopic(id: string): Promise<void> {
     await this.contentRepository.deleteTopic(id);
-  }
-
-  async logInteraction(interactionData: {
-    userId: string;
-    contentId: string;
-    action: InteractionAction;  
-    timestamp: Date;
-    deviceType?: DeviceType;    
-    platform?: PlatformType;    
-    metadata?: Record<string, any>;
-    cameFrom?: 'home' | 'search' | 'recommendation' | 'topic';
-    searchQuery?: string;
-    topicId?: string;
-    recommendationSource?: string;
-    sessionId?: string;
-    progressAtAction?: number;
-    timeSpentSeconds?: number;
-  }): Promise<InteractionLogResponse> {
-    const {
-      userId,
-      contentId,
-      action,
-      timestamp,
-      deviceType,
-      platform,
-      ...rest
-    } = interactionData;
-
-    if (!userId || !contentId || !action) {
-      throw new Error('userId, contentId y action son requeridos');
-    }
-
-    return this.contentRepository.logInteraction({
-      userId,
-      contentId,
-      action,
-      deviceType,
-      platform,
-      ...rest,
-      sessionId: rest.sessionId || `session-${Date.now()}`,
-      progressAtAction: rest.progressAtAction ?? 0,
-      timeSpentSeconds: rest.timeSpentSeconds ?? 0
-    });
   }
 
   async findProblematicContent(threshold: number = 30): Promise<ProblematicContent[]> {

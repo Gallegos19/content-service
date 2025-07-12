@@ -5,6 +5,14 @@ export type ContentType = 'VIDEO' | 'ARTICLE' | 'QUIZ' | 'INTERACTIVE' | 'OTHER'
 export type DifficultyLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
 export type ContentStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
+// Interaction types
+export type InteractionAction = 'start' | 'pause' | 'resume' | 'complete' | 'abandon';
+export type DeviceType = 'mobile' | 'tablet' | 'desktop';
+export type PlatformType = 'ios' | 'android' | 'web';
+export type AbandonmentReason = 'difficulty' | 'boring' | 'error' | 'other';
+export type CameFromType = 'home' | 'search' | 'recommendation' | 'topic';
+export type ProgressStatus = 'not_started' | 'in_progress' | 'completed' | 'paused';
+
 // Base interfaces
 export interface Topic {
   id: string;
@@ -55,13 +63,6 @@ export interface Content {
   updated_by: string | null;
 }
 
-// Interaction types
-export type InteractionAction = 'start' | 'pause' | 'resume' | 'complete' | 'abandon';
-export type DeviceType = 'mobile' | 'tablet' | 'desktop';
-export type PlatformType = 'ios' | 'android' | 'web';
-export type AbandonmentReason = 'difficulty' | 'boring' | 'error' | 'other';
-export type CameFromType = 'home' | 'search' | 'recommendation' | 'topic';
-
 export interface ContentInteractionLog {
   id: string;
   userId: string;
@@ -86,22 +87,7 @@ export interface ContentTopic {
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
-  topic?: {
-    id: string;
-    name: string;
-    slug: string;
-    icon_url: string | null;
-    color_hex: string | null;
-    difficulty_level: DifficultyLevel;
-    target_age_min: number;
-    target_age_max: number;
-    prerequisites: string[];
-    is_active: boolean;
-    sort_order: number;
-    created_at: Date;
-    updated_at: Date;
-    deleted_at: Date | null;
-  };
+  topic?: Topic;
 }
 
 export interface Tip {
@@ -196,12 +182,9 @@ export interface ContentWithRelations extends Content {
   contentProgress?: ContentProgress[];
 }
 
-
 export interface TipWithHistory extends Tip {
   userTipsHistory?: UserTipsHistory[];
 }
-
-export type ProgressStatus = 'not_started' | 'in_progress' | 'completed' | 'paused';
 
 export interface ContentProgressExtended extends Omit<ContentProgress, 'status'> {
   status: ProgressStatus;
@@ -210,6 +193,7 @@ export interface ContentProgressExtended extends Omit<ContentProgress, 'status'>
 
 // Filter and analytics interfaces
 export interface ContentFilters {
+  contentIds?: string[];
   topicId?: string;
   age?: number;
   difficultyLevel?: DifficultyLevel;
@@ -221,9 +205,12 @@ export interface ContentFilters {
   includeTopics?: boolean;
   includeProgress?: boolean;
   userId?: string;
+  userIds?: string[];
   status?: ContentStatus;
   sortBy?: 'created_at' | 'updated_at' | 'title' | 'view_count' | 'rating_average';
   sortOrder?: 'asc' | 'desc';
+  startDate?: Date;
+  endDate?: Date;
 }
 
 export interface ContentAnalytics {
@@ -254,10 +241,13 @@ export interface UserProgress {
   lastPositionSeconds: number;
   lastAccessedAt: Date | null;
   completedAt: Date | null;
+  completionRating?: number;
+  completionFeedback?: string;
 }
 
 export interface AbandonmentAnalytics {
   contentId: string;
+  title?: string;
   totalStarts: number;
   totalCompletions: number;
   completionRate: number;
@@ -274,6 +264,8 @@ export interface EffectivenessAnalytics {
   averageCompletionRate: number;
   averageTimeSpent: number;
   averageRating: number;
+  averageCompletionTime?: number;
+  lastUpdated?: Date;
   mostEngagedContent: Array<{
     id: string;
     title: string;
@@ -297,56 +289,8 @@ export interface ProblematicContent {
   recommendation: string;
 }
 
-// Interaction types
-export enum InteractionAction {
-  START = 'start',
-  PAUSE = 'pause',
-  RESUME = 'resume',
-  COMPLETE = 'complete',
-  ABANDON = 'abandon',
-}
-
-export enum DeviceType {
-  DESKTOP = 'desktop',
-  MOBILE = 'mobile',
-  TABLET = 'tablet',
-}
-
-export enum PlatformType {
-  WEB = 'web',
-  IOS = 'ios',
-  ANDROID = 'android',
-}
-
-export enum AbandonmentReason {
-  TECHNICAL_ISSUES = 'technical_issues',
-  CONTENT_DIFFICULTY = 'content_difficulty',
-  LOST_INTEREST = 'lost_interest',
-  OTHER = 'other',
-}
-
-export enum CameFromType {
-  SEARCH = 'search',
-  RECOMMENDATION = 'recommendation',
-  BOOKMARK = 'bookmark',
-  OTHER = 'other',
-}
-
-export interface ContentInteractionLog {
-  id: string;
-  userId: string;
-  contentId: string;
-  sessionId: string;
-  action: InteractionAction;
-  actionTimestamp: Date;
-  progressAtAction: number | null;
-  timeSpentSeconds: number | null;
-  deviceType: DeviceType | null;
-  platform: PlatformType | null;
-  abandonmentReason: AbandonmentReason | null;
-  cameFrom: CameFromType | null;
-  metadata: Record<string, any> | null;
-}
+// Alias for backward compatibility
+export type InteractionLog = ContentInteractionLog;
 
 // Prisma client type
 export type PrismaClientType = PrismaClient;

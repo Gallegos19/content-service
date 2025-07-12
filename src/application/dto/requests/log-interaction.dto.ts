@@ -1,9 +1,29 @@
-import { IsString, IsOptional, IsEnum, IsObject, IsDateString } from 'class-validator';
-import { InteractionAction, DeviceType, PlatformType } from '@domain/enums/content.enum';
+import { IsString, IsOptional, IsEnum, IsObject, IsDateString, IsNumber } from 'class-validator';
+
+// Define enums locally for validation
+export enum InteractionAction {
+  START = 'start',
+  PAUSE = 'pause',
+  RESUME = 'resume',
+  COMPLETE = 'complete',
+  ABANDON = 'abandon'
+}
+
+export enum DeviceType {
+  MOBILE = 'mobile',
+  TABLET = 'tablet',
+  DESKTOP = 'desktop'
+}
+
+export enum PlatformType {
+  IOS = 'ios',
+  ANDROID = 'android',
+  WEB = 'web'
+}
 
 export class LogInteractionDto {
   @IsString()
-  userid: string;
+  userId: string;
 
   @IsString()
   contentId: string;
@@ -42,4 +62,16 @@ export class LogInteractionDto {
   @IsOptional()
   @IsString()
   recommendationSource?: string;
+
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  progressAtAction?: number;
+
+  @IsOptional()
+  @IsNumber()
+  timeSpentSeconds?: number;
 }

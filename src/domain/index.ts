@@ -1,9 +1,8 @@
 // Export all domain services
 export * from './services';
 
-// Export all domain entities (except AbandonmentReason to avoid conflict)
+// Export all domain entities
 export {
-  AbandonmentReason,
   type Content,
   type ContentTopic,
   type Tip,
@@ -19,8 +18,18 @@ export {
   type AbandonmentAnalytics,
   type EffectivenessAnalytics,
   type ProblematicContent,
-  type InteractionLog,
-  type PrismaClientType
+  type ContentInteractionLog,
+  type PrismaClientType,
+  type Topic,
+  type ContentType,
+  type DifficultyLevel,
+  type ContentStatus,
+  type InteractionAction,
+  type DeviceType,
+  type PlatformType,
+  type AbandonmentReason,
+  type CameFromType,
+  type ProgressStatus
 } from './entities/content.entity';
 
 // Export all domain repositories
@@ -28,6 +37,3 @@ export * from './repositories';
 
 // Export all domain enums
 export * from './enums';
-
-// Export AbandonmentReason with a type alias
-export type { AbandonmentReason as AbandonmentReasonType } from './entities/content.entity';

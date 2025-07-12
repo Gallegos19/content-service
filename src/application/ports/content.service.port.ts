@@ -1,4 +1,11 @@
-import { ContentWithTopics, UserProgress, InteractionLog } from '@domain/entities/content.entity';
+import { 
+  ContentWithTopics, 
+  UserProgress, 
+  ContentInteractionLog,
+  InteractionAction,
+  DeviceType,
+  PlatformType
+} from '@domain/entities/content.entity';
 
 export interface IContentService {
   // Content operations
@@ -23,16 +30,19 @@ export interface IContentService {
   logInteraction(interactionData: {
     userId: string;
     contentId: string;
-    action: string;
+    action: InteractionAction;
     timestamp: Date;
-    deviceType?: string;
-    platformType?: string;
+    deviceType?: DeviceType;
+    platformType?: PlatformType;
     metadata?: Record<string, any>;
     cameFrom?: 'home' | 'search' | 'recommendation' | 'topic';
     searchQuery?: string;
     topicId?: string;
     recommendationSource?: string;
-  }): Promise<InteractionLog>;
+    sessionId?: string;
+    progressAtAction?: number;
+    timeSpentSeconds?: number;
+  }): Promise<ContentInteractionLog>;
   
   // Analytics
   getAbandonmentAnalytics(contentId: string): Promise<any>;

@@ -7,20 +7,62 @@ import {
   InteractionAction, 
   DeviceType, 
   PlatformType, 
-  AbandonmentReason
-} from '@domain/enums/content.enum';
+  AbandonmentReason,
+  DifficultyLevel,
+  ContentType
+} from '@domain/entities/content.entity';
+import { CreateTipDto, UpdateTipDto } from '../dtos/tip.dto';
+import { CreateTopicDto, UpdateTopicDto } from '../dtos/topic.dto';
+
 
 type CameFromType = 'home' | 'search' | 'recommendation' | 'topic';
-import { 
-  CreateContentDto, 
-  UpdateContentDto, 
-  TrackProgressDto, 
-  TrackInteractionDto,
-  contentResponseSchema,
-  userProgressResponseSchema,
-  abandonmentAnalyticsResponseSchema,
-  problematicContentResponseSchema
-} from '../dto/content.dto';
+
+// Define DTOs locally to avoid import issues
+interface CreateContentDto {
+  title: string;
+  description?: string;
+  content_type: string;
+  main_media_id?: string;
+  thumbnail_media_id?: string;
+  difficulty_level?: string;
+  target_age_min?: number;
+  target_age_max?: number;
+  reading_time_minutes?: number;
+  duration_minutes?: number;
+  is_downloadable?: boolean;
+  is_featured?: boolean;
+  is_published?: boolean;
+  published_at?: Date;
+  metadata?: Record<string, any>;
+}
+
+interface UpdateContentDto extends Partial<CreateContentDto> {}
+
+interface TrackProgressDto {
+  user_id: string;
+  content_id: string;
+  status?: 'not_started' | 'in_progress' | 'completed' | 'paused';
+  progress_percentage?: number;
+  time_spent_seconds?: number;
+  last_position_seconds?: number;
+  completion_rating?: number;
+  completion_feedback?: string;
+}
+
+interface TrackInteractionDto {
+  user_id: string;
+  content_id: string;
+  session_id: string;
+  action: string;
+  progress_at_action?: number;
+  time_spent_seconds?: number;
+  device_type?: string;
+  platform?: string;
+  abandonment_reason?: string;
+  came_from?: string;
+  metadata?: Record<string, any>;
+}
+
 import { logger } from '@shared/utils/logger';
 import { ApiError } from '@shared/middlewares/error.middleware';
 
@@ -52,8 +94,25 @@ export class ContentController {
    */
   public createContent = async (req: Request, res: Response): Promise<void> => {
     try {
-      const contentData: CreateContentDto = req.body;
-      const content = await this.contentService.createContent(contentData);
+      // Mapeo seguro y valores por defecto
+      const body = req.body;
+      const contentData: CreateContentDto = {
+        ...body,
+        difficulty_level: body.difficulty_level as DifficultyLevel,
+        content_type: body.content_type as ContentType,
+        metadata: typeof body.metadata === 'object' ? body.metadata : {},
+        view_count: body.view_count ?? 0,
+        completion_count: body.completion_count ?? 0,
+        rating_average: body.rating_average ?? null,
+        rating_count: body.rating_count ?? 0,
+        is_downloadable: body.is_downloadable ?? false,
+        is_featured: body.is_featured ?? false,
+        is_published: body.is_published ?? false,
+        created_by: body.created_by ?? null,
+        updated_by: body.updated_by ?? null,
+        // otros campos opcionales según tu modelo
+      };
+      const content = await this.contentService.createContent(contentData as any);
       res.status(StatusCodes.CREATED).json({
         status: 'success',
         data: content
@@ -90,8 +149,24 @@ export class ContentController {
    */
   public updateContent = async (req: Request, res: Response): Promise<void> => {
     try {
-      const updateData: UpdateContentDto = req.body;
-      const content = await this.contentService.updateContent(req.params.id, updateData);
+      const body = req.body;
+      const updateData: UpdateContentDto = {
+        ...body,
+        difficulty_level: body.difficulty_level as DifficultyLevel,
+        content_type: body.content_type as ContentType,
+        metadata: typeof body.metadata === 'object' ? body.metadata : {},
+        // Solo actualiza si los campos vienen en el body, si no, ignóralos
+        view_count: body.view_count,
+        completion_count: body.completion_count,
+        rating_average: body.rating_average,
+        rating_count: body.rating_count,
+        is_downloadable: body.is_downloadable,
+        is_featured: body.is_featured,
+        is_published: body.is_published,
+        updated_by: body.updated_by,
+        // otros campos opcionales según tu modelo
+      };
+      const content = await this.contentService.updateContent(req.params.id, updateData as any);
       res.status(StatusCodes.OK).json({
         status: 'success',
         data: content
@@ -102,6 +177,7 @@ export class ContentController {
       throw error;
     }
   };
+
 
   /**
    * Elimina un contenido
@@ -141,8 +217,18 @@ export class ContentController {
    */
   public createTip = async (req: Request, res: Response): Promise<void> => {
     try {
-      const tipData = req.body;
-      const tip = await this.contentService.createTip(tipData);
+      const body = req.body;
+      const tipData: CreateTipDto = {
+        ...body,
+        difficulty_level: body.difficulty_level as DifficultyLevel,
+        tip_type: body.tip_type ?? 'GENERAL',
+        is_active: body.is_active ?? true,
+        usage_count: body.usage_count ?? 0,
+        created_by: body.created_by ?? null,
+        updated_by: body.updated_by ?? null,
+        // otros campos opcionales según tu modelo
+      };
+      const tip = await this.contentService.createTip(tipData as any);
       res.status(StatusCodes.CREATED).json({
         status: 'success',
         data: tip
@@ -179,8 +265,17 @@ export class ContentController {
    */
   public updateTip = async (req: Request, res: Response): Promise<void> => {
     try {
-      const updateData = req.body;
-      const tip = await this.contentService.updateTip(req.params.id, updateData);
+      const body = req.body;
+      const updateData: UpdateTipDto = {
+        ...body,
+        difficulty_level: body.difficulty_level as DifficultyLevel,
+        tip_type: body.tip_type,
+        is_active: body.is_active,
+        usage_count: body.usage_count,
+        updated_by: body.updated_by,
+        // otros campos opcionales según tu modelo
+      };
+      const tip = await this.contentService.updateTip(req.params.id, updateData as any);
       res.status(StatusCodes.OK).json({
         status: 'success',
         data: tip
@@ -230,8 +325,18 @@ export class ContentController {
    */
   public createTopic = async (req: Request, res: Response): Promise<void> => {
     try {
-      const topicData = req.body;
-      const topic = await this.contentService.createTopic(topicData);
+      const body = req.body;
+      const topicData: CreateTopicDto = {
+        ...body,
+        difficulty_level: body.difficulty_level as DifficultyLevel,
+        is_active: body.is_active ?? true,
+        sort_order: body.sort_order ?? 0,
+        prerequisites: Array.isArray(body.prerequisites) ? body.prerequisites : [],
+        created_by: body.created_by ?? null,
+        updated_by: body.updated_by ?? null,
+        // otros campos opcionales según tu modelo
+      };
+      const topic = await this.contentService.createTopic(topicData as any);
       res.status(StatusCodes.CREATED).json({
         status: 'success',
         data: topic
@@ -268,8 +373,17 @@ export class ContentController {
    */
   public updateTopic = async (req: Request, res: Response): Promise<void> => {
     try {
-      const updateData = req.body;
-      const topic = await this.contentService.updateTopic(req.params.id, updateData);
+      const body = req.body;
+      const updateData: UpdateTopicDto = {
+        ...body,
+        difficulty_level: body.difficulty_level as DifficultyLevel,
+        is_active: body.is_active,
+        sort_order: body.sort_order,
+        prerequisites: Array.isArray(body.prerequisites) ? body.prerequisites : [],
+        updated_by: body.updated_by,
+        // otros campos opcionales según tu modelo
+      };
+      const topic = await this.contentService.updateTopic(req.params.id, updateData as any);
       res.status(StatusCodes.OK).json({
         status: 'success',
         data: topic
@@ -394,7 +508,7 @@ export class ContentController {
       logger.error(`Error al registrar progreso: ${errorMessage}`);
       throw error;
     }
-  }
+  };
 
   /**
    * Obtiene el progreso de un usuario
@@ -423,18 +537,18 @@ export class ContentController {
       const interactionData: TrackInteractionDto = req.body;
       
       // Map the DTO to match the service expected format
-      const interaction = await this.contentService.trackInteraction({
+      const interaction = await this.contentService.logInteraction({
         userId: interactionData.user_id,
         contentId: interactionData.content_id,
         sessionId: interactionData.session_id,
         action: interactionData.action as InteractionAction,
         progressAtAction: interactionData.progress_at_action,
         timeSpentSeconds: interactionData.time_spent_seconds,
-        deviceType: interactionData.device_type as DeviceType | null,
-        platform: interactionData.platform as PlatformType | null,
-        abandonmentReason: interactionData.abandonment_reason as AbandonmentReason | null,
-        cameFrom: interactionData.came_from as CameFromType | null,
-        metadata: interactionData.metadata
+        deviceType: interactionData.device_type as DeviceType,
+        platformType: interactionData.platform as PlatformType,
+        cameFrom: interactionData.came_from as CameFromType,
+        metadata: interactionData.metadata,
+        timestamp: new Date()
       });
       
       res.status(StatusCodes.CREATED).json({

@@ -6,6 +6,9 @@ import { Content, Tip, Topic } from '@domain/entities/content.entity';
 export const TYPES = {
   // Repositories
   ContentRepository: Symbol.for('ContentRepository'),
+  AnalyticsRepository: Symbol.for('AnalyticsRepository'),
+  ProgressRepository: Symbol.for('ProgressRepository'),
+  InteractionRepository: Symbol.for('InteractionRepository'),
   
   // Services
   ContentService: Symbol.for('ContentService'),
@@ -20,6 +23,10 @@ export const TYPES = {
   FindContentByAgeUseCase: Symbol.for('FindContentByAgeUseCase'),
   TrackUserProgressUseCase: Symbol.for('TrackUserProgressUseCase'),
   LogInteractionUseCase: Symbol.for('LogInteractionUseCase'),
+  FindContentByIdUseCase: Symbol.for('FindContentByIdUseCase'),
+  CreateContentUseCase: Symbol.for('CreateContentUseCase'),
+  UpdateContentUseCase: Symbol.for('UpdateContentUseCase'),
+  DeleteContentUseCase: Symbol.for('DeleteContentUseCase'),
   
   // Controllers
   ContentController: Symbol.for('ContentController'),

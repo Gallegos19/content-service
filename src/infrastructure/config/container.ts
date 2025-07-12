@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { Container } from 'inversify';
 import { PrismaClient } from '@prisma/client';
 import { ContentService } from '@domain/services/content.service';
-import { PrismaContentRepository } from '../database/repositories/prisma-content.repository';
+import { ContentRepository } from '../database/repositories/content.repository';
 import { IContentRepository } from '@domain/repositories/content.repository';
 import {
   FindAllModulesUseCase,
@@ -14,8 +14,12 @@ import {
 } from '@application/use-cases/content';
 import { ContentController } from '../web/content/controllers/content.controller';
 import { TYPES } from '@shared/constants/types';
+import { logger } from '@shared/utils/logger';
 
 const container = new Container();
+
+// Logger (singleton)
+container.bind(TYPES.Logger).toConstantValue(logger);
 
 // Prisma Client (singleton)
 container.bind<PrismaClient>(TYPES.PrismaClient)
@@ -24,7 +28,7 @@ container.bind<PrismaClient>(TYPES.PrismaClient)
 
 // Repositories
 container.bind<IContentRepository>(TYPES.ContentRepository)
-  .to(PrismaContentRepository)
+  .to(ContentRepository)
   .inSingletonScope();
 
 // Services
@@ -49,17 +53,17 @@ container.bind<FindContentByAgeUseCase>(TYPES.FindContentByAgeUseCase)
   .to(FindContentByAgeUseCase)
   .inRequestScope();
 
-// Controllers
-container.bind<ContentController>(TYPES.ContentController)
-  .to(ContentController)
-  .inRequestScope();
-
 container.bind<TrackUserProgressUseCase>(TYPES.TrackUserProgressUseCase)
   .to(TrackUserProgressUseCase)
   .inRequestScope();
 
 container.bind<LogInteractionUseCase>(TYPES.LogInteractionUseCase)
   .to(LogInteractionUseCase)
+  .inRequestScope();
+
+// Controllers
+container.bind<ContentController>(TYPES.ContentController)
+  .to(ContentController)
   .inRequestScope();
 
 export { container };
