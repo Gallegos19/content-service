@@ -1,0 +1,193 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto]
+}
+
+enum ContentType {
+  VIDEO
+  ARTICLE
+  QUIZ
+  INTERACTIVE
+  OTHER
+}
+
+enum DifficultyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Topic {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String          @db.VarChar(200)
+  description      String?         @db.Text
+  slug             String          @unique @db.VarChar(200)
+  icon_url         String?         @db.VarChar(500)
+  color_hex        String          @default("#4CAF50") @db.VarChar(7)
+  category         String?         @db.VarChar(100)
+  difficulty_level DifficultyLevel @default(BEGINNER)
+  target_age_min   Int             @default(8)
+  target_age_max   Int             @default(18)
+  prerequisites    Json?           @default("[]")
+  is_active        Boolean         @default(true)
+  sort_order       Int             @default(0)
+  created_at       DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime        @default(now()) @db.Timestamptz(6)
+  deleted_at       DateTime?       @db.Timestamptz(6)
+  created_by       String?         @db.Uuid
+  updated_by       String?         @db.Uuid
+  contentTopics    ContentTopic[]
+}
+
+model Content {
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                String          @db.VarChar(255)
+  description          String?         @db.Text
+  content_type         ContentType
+  main_media_id        String?         @db.Uuid
+  thumbnail_media_id   String?         @db.Uuid
+  difficulty_level     DifficultyLevel @default(BEGINNER)
+  target_age_min       Int             @default(8)
+  target_age_max       Int             @default(18)
+  reading_time_minutes Int?
+  duration_minutes     Int?
+  is_downloadable      Boolean         @default(false)
+  is_featured          Boolean         @default(false)
+  view_count           Int             @default(0)
+  completion_count     Int             @default(0)
+  rating_average       Float?          @default(0.0)
+  rating_count         Int             @default(0)
+  metadata             Json?           @default("{}")
+  is_published         Boolean         @default(false)
+  published_at         DateTime?       @db.Timestamptz(6)
+  created_at           DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime        @default(now()) @db.Timestamptz(6)
+  deleted_at           DateTime?       @db.Timestamptz(6)
+  created_by           String?         @db.Uuid
+  updated_by           String?         @db.Uuid
+
+  contentTopics   ContentTopic[]    @relation("ContentToTopics")
+  contentProgress ContentProgress[] @relation("ContentToProgress")
+  tips            Tip[]             @relation("ContentToTips")
+
+  @@index([content_type])
+  @@index([is_published])
+  @@index([created_at])
+}
+
+model ContentTopic {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content_id String   @db.Uuid
+  topic_id   String   @db.Uuid
+  is_primary Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  content Content @relation("ContentToTopics", fields: [content_id], references: [id], onDelete: Cascade)
+  topic   Topic   @relation(fields: [topic_id], references: [id], onDelete: Cascade)
+
+  @@unique([content_id, topic_id])
+  @@index([content_id])
+  @@index([topic_id])
+}
+
+model ContentProgress {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id               String    @db.Uuid
+  content_id            String    @db.Uuid
+  status                String    @default("not_started") @db.VarChar(20)
+  progress_percentage   Int       @default(0)
+  time_spent_seconds    Int       @default(0)
+  last_position_seconds Int       @default(0)
+  completion_rating     Int?
+  completion_feedback   String?   @db.Text
+  first_accessed_at     DateTime? @db.Timestamptz(6)
+  last_accessed_at      DateTime? @db.Timestamptz(6)
+  completed_at          DateTime? @db.Timestamptz(6)
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime  @default(now()) @db.Timestamptz(6)
+
+  content Content @relation("ContentToProgress", fields: [content_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, content_id])
+  @@index([content_id])
+  @@index([user_id])
+  @@index([status])
+}
+
+model Tip {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                  String    @db.VarChar(200)
+  content                String    @db.Text
+  tip_type               String    @default("daily") @db.VarChar(50)
+  category               String?   @db.VarChar(100)
+  target_age_min         Int       @default(8)
+  target_age_max         Int       @default(18)
+  difficulty_level       String    @default("easy") @db.VarChar(20)
+  action_required        Boolean   @default(false)
+  action_instructions    String?   @db.Text
+  estimated_time_minutes Int?
+  impact_level           String    @default("medium") @db.VarChar(20)
+  source_url             String?   @db.VarChar(500)
+  image_url              String?   @db.VarChar(500)
+  is_active              Boolean   @default(true)
+  valid_from             DateTime? @db.Date
+  valid_until            DateTime? @db.Date
+  usage_count            Int       @default(0)
+  created_at             DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime  @default(now()) @db.Timestamptz(6)
+  deleted_at             DateTime? @db.Timestamptz(6)
+  created_by             String?   @db.Uuid
+  updated_by             String?   @db.Uuid
+
+  content_id      String?           @db.Uuid
+  contentRef      Content?          @relation("ContentToTips", fields: [content_id], references: [id])
+  userTipsHistory UserTipsHistory[]
+}
+
+model UserTipsHistory {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String   @db.Uuid
+  tip_id         String   @db.Uuid
+  shown_at       DateTime @default(now()) @db.Timestamptz(6)
+  was_read       Boolean  @default(false)
+  was_acted_upon Boolean  @default(false)
+  user_rating    Int?
+  user_feedback  String?  @db.Text
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  tip Tip @relation(fields: [tip_id], references: [id])
+}
+
+model ContentInteractionLog {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String   @db.Uuid
+  content_id        String   @db.Uuid
+  session_id        String   @db.VarChar(255)
+  action            String   @db.VarChar(100)
+  action_timestamp  DateTime @default(now()) @db.Timestamptz(6)
+  progress_at_action Decimal? @db.Decimal(10, 2)
+  time_spent_seconds Int?     @default(0)
+  device_type       String?  @db.VarChar(50)
+  platform          String?  @db.VarChar(50)
+  abandonment_reason String? @db.VarChar(100)
+  came_from         String?  @db.VarChar(500)
+  metadata          Json?    @default("{}")
+
+  @@index([user_id])
+  @@index([content_id])
+  @@index([session_id])
+  @@index([action])
+  @@index([action_timestamp])
+}
