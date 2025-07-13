@@ -20,7 +20,7 @@ export interface Topic {
   description: string | null;
   slug: string;
   icon_url: string | null;
-  color_hex: string | null;
+  color_hex: string;
   category: string | null;
   difficulty_level: DifficultyLevel;
   target_age_min: number;
@@ -45,8 +45,8 @@ export interface Content {
   difficulty_level: DifficultyLevel;
   target_age_min: number;
   target_age_max: number;
-  reading_time_minutes: number | null;
-  duration_minutes: number | null;
+  reading_time_minutes?: number | null;
+  duration_minutes?: number | null;
   is_downloadable: boolean;
   is_featured: boolean;
   view_count: number;
@@ -61,6 +61,7 @@ export interface Content {
   deleted_at: Date | null;
   created_by: string | null;
   updated_by: string | null;
+  contentTopics?: ContentTopic[];
 }
 
 export interface ContentInteractionLog {
@@ -106,6 +107,9 @@ export interface Tip {
   source_url: string | null;
   image_url: string | null;
   is_active: boolean;
+  is_featured?: boolean;
+  prerequisites?: string[];
+  related_tips?: string[];
   valid_from: Date | null;
   valid_until: Date | null;
   usage_count: number;
@@ -115,6 +119,7 @@ export interface Tip {
   created_by: string | null;
   updated_by: string | null;
   content_id: string | null;
+  metadata: Record<string, any> | null;
 }
 
 export interface UserTipsHistory {
@@ -147,39 +152,12 @@ export interface ContentProgress {
 }
 
 // Extended interfaces
-export interface ContentWithTopics {
-  id: string;
-  title: string;
-  description: string | null;
-  content_type: ContentType;
-  main_media_id: string | null;
-  thumbnail_media_id: string | null;
-  difficulty_level: DifficultyLevel;
-  target_age_min: number;
-  target_age_max: number;
-  reading_time_minutes: number | null;
-  duration_minutes: number | null;
-  is_downloadable: boolean;
-  is_featured: boolean;
-  view_count: number;
-  completion_count: number;
-  rating_average: number | null;
-  rating_count: number;
-  metadata: Record<string, any> | null;
-  is_published: boolean;
-  published_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
-  created_by: string | null;
-  updated_by: string | null;
+export interface ContentWithTopics extends Content {
   contentTopics: ContentTopic[];
 }
 
 export interface ContentWithRelations extends Content {
-  contentTopics?: ContentTopic[];
-  tips?: Tip[];
-  contentProgress?: ContentProgress[];
+  contentTopics: ContentTopic[];
 }
 
 export interface TipWithHistory extends Tip {
@@ -241,8 +219,8 @@ export interface UserProgress {
   lastPositionSeconds: number;
   lastAccessedAt: Date | null;
   completedAt: Date | null;
-  completionRating?: number;
-  completionFeedback?: string;
+  completionRating?: number | null;
+  completionFeedback?: string | null;
 }
 
 export interface AbandonmentAnalytics {

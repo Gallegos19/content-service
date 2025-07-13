@@ -8,14 +8,21 @@ import {
   DeviceType, 
   PlatformType, 
   AbandonmentReason,
-  DifficultyLevel,
-  ContentType
+  CameFromType
 } from '@domain/entities/content.entity';
 import { CreateTipDto, UpdateTipDto } from '../dtos/tip.dto';
 import { CreateTopicDto, UpdateTopicDto } from '../dtos/topic.dto';
+import { z } from 'zod';
+import { createTipSchema } from '../dto/tip.dto';
+import { Content } from '../../../../domain/entities/content.entity';
+import { ContentType, DifficultyLevel } from '../../../../domain/enums/content.enum';
+import { ErrorResponse } from '../dto/content.dto';
+import { Tip } from '@domain/entities/content.entity';
+import { updateContentSchema } from '../dto/content.dto';
+import { UpdateContentUseCase } from '@application/use-cases/content/update-content.use-case';
+import bodyParser from 'body-parser';
 
-
-type CameFromType = 'home' | 'search' | 'recommendation' | 'topic';
+const jsonParser = bodyParser.json();
 
 // Define DTOs locally to avoid import issues
 interface CreateContentDto {
@@ -66,33 +73,45 @@ interface TrackInteractionDto {
 import { logger } from '@shared/utils/logger';
 import { ApiError } from '@shared/middlewares/error.middleware';
 
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string;
+  };
+}
+
 @injectable()
 export class ContentController {
+  private readonly logger = logger;
+
   constructor(
-    @inject(TYPES.ContentService) private readonly contentService: ContentService
+    @inject(TYPES.ContentService) private readonly contentService: ContentService,
+    @inject(TYPES.UpdateContentUseCase) private readonly updateContentUseCase: UpdateContentUseCase
   ) {}
 
   /**
    * Obtiene todos los módulos de contenido
    */
-  public getModules = async (_req: Request, res: Response): Promise<void> => {
+  public getModules = async (_req: Request, res: Response): Promise<Response> => {
     try {
       const modules = await this.contentService.findAllModules();
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: modules,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener módulos';
-      logger.error(`Error al obtener módulos: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener módulos: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Crea un nuevo contenido
    */
-  public createContent = async (req: Request, res: Response): Promise<void> => {
+  public createContent = async (req: Request, res: Response): Promise<Response> => {
     try {
       // Mapeo seguro y valores por defecto
       const body = req.body;
@@ -113,68 +132,94 @@ export class ContentController {
         // otros campos opcionales según tu modelo
       };
       const content = await this.contentService.createContent(contentData as any);
-      res.status(StatusCodes.CREATED).json({
+      return res.status(StatusCodes.CREATED).json({
         status: 'success',
         data: content
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al crear contenido';
-      logger.error(`Error al crear contenido: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al crear contenido: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene un contenido por ID
    */
-  public getContentById = async (req: Request, res: Response): Promise<void> => {
+  public getContentById = async (req: Request, res: Response): Promise<Response> => {
     try {
       const content = await this.contentService.getContentById(req.params.id);
       if (!content) {
-        throw new ApiError(StatusCodes.NOT_FOUND, 'Contenido no encontrado');
+        const response: ErrorResponse = {
+          status: 'error',
+          message: 'Contenido no encontrado'
+        };
+        return res.status(404).json(response);
       }
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: content
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al obtener contenido';
-      logger.error(`Error al obtener contenido ${req.params.id}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener contenido ${req.params.id}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Actualiza un contenido
    */
-  public updateContent = async (req: Request, res: Response): Promise<void> => {
+  public updateContent = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
-      const body = req.body;
-      const updateData: UpdateContentDto = {
-        ...body,
-        difficulty_level: body.difficulty_level as DifficultyLevel,
-        content_type: body.content_type as ContentType,
-        metadata: typeof body.metadata === 'object' ? body.metadata : {},
-        // Solo actualiza si los campos vienen en el body, si no, ignóralos
-        view_count: body.view_count,
-        completion_count: body.completion_count,
-        rating_average: body.rating_average,
-        rating_count: body.rating_count,
-        is_downloadable: body.is_downloadable,
-        is_featured: body.is_featured,
-        is_published: body.is_published,
-        updated_by: body.updated_by,
-        // otros campos opcionales según tu modelo
-      };
-      const content = await this.contentService.updateContent(req.params.id, updateData as any);
-      res.status(StatusCodes.OK).json({
-        status: 'success',
-        data: content
+      const { id } = req.params;
+      console.log(`Updating content with ID: ${id}`);
+      
+      if (!id) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ 
+          status: 'error', 
+          message: 'ID del contenido es requerido' 
+        });
+      }
+      
+      const validatedData = updateContentSchema.parse({
+        ...req.body,
+        metadata: req.body.metadata ? JSON.stringify(req.body.metadata) : null
       });
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar contenido';
-      logger.error(`Error al actualizar contenido ${req.params.id}: ${errorMessage}`);
-      throw error;
+      
+      const result = await this.updateContentUseCase.execute(
+        id,
+        {
+          id,
+          ...validatedData,
+          updated_by: req.user?.id
+        }
+      );
+      
+      return res.status(StatusCodes.OK).json({
+        status: 'success',
+        data: result
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          status: 'error',
+          message: 'Datos inválidos',
+          errors: error.errors
+        });
+      }
+      
+      logger.error('Error updating content:', error);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        status: 'error',
+        message: 'Error interno del servidor'
+      });
     }
   };
 
@@ -182,88 +227,111 @@ export class ContentController {
   /**
    * Elimina un contenido
    */
-  public deleteContent = async (req: Request, res: Response): Promise<void> => {
+  public deleteContent = async (req: Request, res: Response): Promise<Response> => {
     try {
       await this.contentService.deleteContent(req.params.id);
-      res.status(StatusCodes.NO_CONTENT).json({
+      return res.status(StatusCodes.NO_CONTENT).json({
         status: 'success'
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar contenido';
-      logger.error(`Error al eliminar contenido ${req.params.id}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error deleting content ${req.params.id}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene todos los tips
    */
-  public getAllTips = async (_req: Request, res: Response): Promise<void> => {
+  public getAllTips = async (_req: Request, res: Response): Promise<Response> => {
     try {
       const tips = await this.contentService.getAllTips();
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: tips
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al obtener tips';
-      logger.error(`Error al obtener tips: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(response);
     }
   };
 
   /**
    * Crea un nuevo tip
    */
-  public createTip = async (req: Request, res: Response): Promise<void> => {
+  public createTip = async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
     try {
-      const body = req.body;
-      const tipData: CreateTipDto = {
-        ...body,
-        difficulty_level: body.difficulty_level as DifficultyLevel,
-        tip_type: body.tip_type ?? 'GENERAL',
-        is_active: body.is_active ?? true,
-        usage_count: body.usage_count ?? 0,
-        created_by: body.created_by ?? null,
-        updated_by: body.updated_by ?? null,
-        // otros campos opcionales según tu modelo
+      const validatedData = createTipSchema.parse(req.body);
+      
+      const result = await this.contentService.createTip({
+        title: validatedData.title,
+        content: validatedData.content,
+        tip_type: 'ARTICLE', 
+        difficulty_level: 'BEGINNER', 
+        target_age_min: validatedData.target_age_min ?? 0,
+        target_age_max: validatedData.target_age_max ?? 100,
+        estimated_time_minutes: validatedData.estimated_time_minutes ?? null,
+        created_by: req.user?.id ?? null,
+        metadata: validatedData.metadata ?? {},
+      } as Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { metadata?: Record<string, any> | null });
+
+      return res.status(201).json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const response: ErrorResponse = {
+          status: 'error',
+          message: 'Validation error',
+          errors: error.errors.map(e => ({ code: e.code, message: e.message }))
+        };
+        return res.status(400).json(response);
+      }
+      
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
       };
-      const tip = await this.contentService.createTip(tipData as any);
-      res.status(StatusCodes.CREATED).json({
-        status: 'success',
-        data: tip
-      });
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al crear tip';
-      logger.error(`Error al crear tip: ${errorMessage}`);
-      throw error;
+      this.logger.error('Error creating tip:', error);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene un tip por ID
    */
-  public getTipById = async (req: Request, res: Response): Promise<void> => {
+  public getTipById = async (req: Request, res: Response): Promise<Response> => {
     try {
       const tip = await this.contentService.getTipById(req.params.id);
       if (!tip) {
-        throw new ApiError(StatusCodes.NOT_FOUND, 'Tip no encontrado');
+        const response: ErrorResponse = {
+          status: 'error',
+          message: 'Tip no encontrado'
+        };
+        return res.status(404).json(response);
       }
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: tip
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al obtener tip';
-      logger.error(`Error al obtener tip ${req.params.id}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener tip ${req.params.id}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Actualiza un tip
    */
-  public updateTip = async (req: Request, res: Response): Promise<void> => {
+  public updateTip = async (req: Request, res: Response): Promise<Response> => {
     try {
       const body = req.body;
       const updateData: UpdateTipDto = {
@@ -276,54 +344,63 @@ export class ContentController {
         // otros campos opcionales según tu modelo
       };
       const tip = await this.contentService.updateTip(req.params.id, updateData as any);
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: tip
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar tip';
-      logger.error(`Error al actualizar tip ${req.params.id}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al actualizar tip ${req.params.id}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Elimina un tip
    */
-  public deleteTip = async (req: Request, res: Response): Promise<void> => {
+  public deleteTip = async (req: Request, res: Response): Promise<Response> => {
     try {
       await this.contentService.deleteTip(req.params.id);
-      res.status(StatusCodes.NO_CONTENT).json({
+      return res.status(StatusCodes.NO_CONTENT).json({
         status: 'success'
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar tip';
-      logger.error(`Error al eliminar tip ${req.params.id}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al eliminar tip ${req.params.id}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene todos los temas
    */
-  public getAllTopics = async (_req: Request, res: Response): Promise<void> => {
+  public getAllTopics = async (_req: Request, res: Response): Promise<Response> => {
     try {
       const topics = await this.contentService.getAllTopics();
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: topics
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al obtener temas';
-      logger.error(`Error al obtener temas: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener temas: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Crea un nuevo tema
    */
-  public createTopic = async (req: Request, res: Response): Promise<void> => {
+  public createTopic = async (req: Request, res: Response): Promise<Response> => {
     try {
       const body = req.body;
       const topicData: CreateTopicDto = {
@@ -337,41 +414,51 @@ export class ContentController {
         // otros campos opcionales según tu modelo
       };
       const topic = await this.contentService.createTopic(topicData as any);
-      res.status(StatusCodes.CREATED).json({
+      return res.status(StatusCodes.CREATED).json({
         status: 'success',
         data: topic
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al crear tema';
-      logger.error(`Error al crear tema: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al crear tema: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene un tema por ID
    */
-  public getTopicById = async (req: Request, res: Response): Promise<void> => {
+  public getTopicById = async (req: Request, res: Response): Promise<Response> => {
     try {
       const topic = await this.contentService.getTopicById(req.params.id);
       if (!topic) {
-        throw new ApiError(StatusCodes.NOT_FOUND, 'Tema no encontrado');
+        const response: ErrorResponse = {
+          status: 'error',
+          message: 'Tema no encontrado'
+        };
+        return res.status(404).json(response);
       }
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: topic
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al obtener tema';
-      logger.error(`Error al obtener tema ${req.params.id}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener tema ${req.params.id}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Actualiza un tema
    */
-  public updateTopic = async (req: Request, res: Response): Promise<void> => {
+  public updateTopic = async (req: Request, res: Response): Promise<Response> => {
     try {
       const body = req.body;
       const updateData: UpdateTopicDto = {
@@ -384,155 +471,224 @@ export class ContentController {
         // otros campos opcionales según tu modelo
       };
       const topic = await this.contentService.updateTopic(req.params.id, updateData as any);
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: topic
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al actualizar tema';
-      logger.error(`Error al actualizar tema ${req.params.id}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al actualizar tema ${req.params.id}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Elimina un tema
    */
-  public deleteTopic = async (req: Request, res: Response): Promise<void> => {
+  public deleteTopic = async (req: Request, res: Response): Promise<Response> => {
     try {
       await this.contentService.deleteTopic(req.params.id);
-      res.status(StatusCodes.NO_CONTENT).json({
+      return res.status(StatusCodes.NO_CONTENT).json({
         status: 'success'
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar tema';
-      logger.error(`Error al eliminar tema ${req.params.id}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al eliminar tema ${req.params.id}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene un módulo por su ID
    */
-  public getModuleById = async (req: Request, res: Response): Promise<void> => {
+  public getModuleById = async (req: Request, res: Response): Promise<Response> => {
     try {
       const { moduleId } = req.params;
       const module = await this.contentService.findModuleById(moduleId);
       
       if (!module) {
-        throw new ApiError(StatusCodes.NOT_FOUND, 'Módulo no encontrado');
+        const response: ErrorResponse = {
+          status: 'error',
+          message: 'Módulo no encontrado'
+        };
+        return res.status(404).json(response);
       }
       
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: module,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener módulo';
-      logger.error(`Error al obtener módulo ${req.params.moduleId}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener módulo ${req.params.moduleId}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene contenido por ID de tema
    */
-  public getContentByTopic = async (req: Request, res: Response): Promise<void> => {
+  public getContentByTopic = async (req: Request, res: Response): Promise<Response> => {
     try {
       const { topicId } = req.params;
       const content = await this.contentService.findContentByTopic(topicId);
       
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: content,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener contenido por tema';
-      logger.error(`Error al obtener contenido por tema ${req.params.topicId}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener contenido por tema ${req.params.topicId}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene contenido por rango de edad
    */
-  public getContentByAge = async (req: Request, res: Response): Promise<void> => {
+  public getContentByAge = async (req: Request, res: Response): Promise<Response> => {
     try {
       const { age } = req.params;
       const ageNum = parseInt(age, 10);
       
       if (isNaN(ageNum) || ageNum < 0) {
-        throw new ApiError(StatusCodes.BAD_REQUEST, 'La edad debe ser un número positivo');
+        const response: ErrorResponse = {
+          status: 'error',
+          message: 'La edad debe ser un número positivo'
+        };
+        return res.status(400).json(response);
       }
       
       const content = await this.contentService.findContentByAge(ageNum);
       
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: content,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener contenido por edad';
-      logger.error(`Error al obtener contenido para edad ${req.params.age}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener contenido para edad ${req.params.age}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Registra el progreso de un usuario en un contenido
    */
-  public trackProgress = async (req: Request, res: Response): Promise<void> => {
+  public trackProgress = async (req: Request, res: Response): Promise<Response> => {
     try {
-      const progressData: TrackProgressDto = req.body;
+      if (!req.is('application/json')) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          status: 'error', 
+          message: 'Content-Type must be application/json'
+        });
+      }
+
+      // Log raw body for debugging
+      console.log('Raw request body:', req.body);
       
-      // Transform snake_case to camelCase
-      const transformedData = {
-        userId: progressData.user_id,
-        contentId: progressData.content_id,
-        status: progressData.status,
-        progressPercentage: progressData.progress_percentage,
-        timeSpentSeconds: progressData.time_spent_seconds,
-        lastPositionSeconds: progressData.last_position_seconds,
-        completionRating: progressData.completion_rating,
-        completionFeedback: progressData.completion_feedback
+      if (!req.body || typeof req.body !== 'object') {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          status: 'error',
+          message: 'Invalid request body format'
+        });
+      }
+
+      // Extract values
+      const userId = req.body.user_id || req.body.userId;
+      const contentId = req.body.content_id || req.body.contentId;
+      const status = req.body.status;
+      const progressPercentage = req.body.progress_percentage ?? req.body.progressPercentage;
+      const timeSpentSeconds = req.body.time_spent_seconds ?? req.body.timeSpentSeconds;
+      const lastPositionSeconds = req.body.last_position_seconds ?? req.body.lastPositionSeconds;
+      const completionRating = req.body.completion_rating ?? req.body.completionRating;
+      const completionFeedback = req.body.completion_feedback ?? req.body.completionFeedback;
+
+      // Validate required fields
+      if (!userId || !contentId) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          status: 'error',
+          message: 'userId and contentId are required'
+        });
+      }
+
+      // Transform and validate data
+      const progressData = {
+        userId,
+        contentId,
+        status: status || 'not_started',
+        progressPercentage: typeof progressPercentage === 'number' ? progressPercentage : 0,
+        timeSpentSeconds: typeof timeSpentSeconds === 'number' ? timeSpentSeconds : 0,
+        lastPositionSeconds: typeof lastPositionSeconds === 'number' ? lastPositionSeconds : 0,
+        completionRating,
+        completionFeedback
       };
+
+      console.log('Processed progress data:', progressData);
       
-      const progress = await this.contentService.trackUserProgress(transformedData);
+      const result = await this.contentService.trackUserProgress(progressData);
+      if (!result) {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          status: 'error',
+          message: 'Failed to track progress'
+        });
+      }
       
-      res.status(StatusCodes.CREATED).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
-        data: progress,
+        data: result
       });
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al registrar progreso';
-      logger.error(`Error al registrar progreso: ${errorMessage}`);
-      throw error;
+    } catch (error) {
+      this.logger.error('Error tracking progress:', error);
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Failed to track progress'
+      });
     }
   };
 
   /**
    * Obtiene el progreso de un usuario
    */
-  public getUserProgress = async (req: Request, res: Response): Promise<void> => {
+  public getUserProgress = async (req: Request, res: Response): Promise<Response> => {
     try {
       const { userId } = req.params;
       const progress = await this.contentService.getUserProgress(userId);
       
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: progress,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener progreso del usuario';
-      logger.error(`Error al obtener progreso del usuario ${req.params.userId}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener progreso del usuario ${req.params.userId}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Registra una interacción del usuario con el contenido
    */
-  public trackInteraction = async (req: Request, res: Response): Promise<void> => {
+  public trackInteraction = async (req: Request, res: Response): Promise<Response> => {
     try {
       const interactionData: TrackInteractionDto = req.body;
       
@@ -542,79 +698,91 @@ export class ContentController {
         contentId: interactionData.content_id,
         sessionId: interactionData.session_id,
         action: interactionData.action as InteractionAction,
-        progressAtAction: interactionData.progress_at_action,
-        timeSpentSeconds: interactionData.time_spent_seconds,
+        progressAtAction: interactionData.progress_at_action ?? null,
+        timeSpentSeconds: interactionData.time_spent_seconds ?? null,
         deviceType: interactionData.device_type as DeviceType,
-        platformType: interactionData.platform as PlatformType,
+        platform: interactionData.platform as PlatformType,
         cameFrom: interactionData.came_from as CameFromType,
-        metadata: interactionData.metadata,
-        timestamp: new Date()
+        abandonmentReason: interactionData.abandonment_reason as AbandonmentReason,
+        metadata: interactionData.metadata ?? null
       });
       
-      res.status(StatusCodes.CREATED).json({
+      return res.status(StatusCodes.CREATED).json({
         status: 'success',
         data: interaction,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al registrar interacción';
-      logger.error(`Error al registrar interacción: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al registrar interacción: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene estadísticas de abandono para un contenido
    */
-  public getAbandonmentAnalytics = async (req: Request, res: Response): Promise<void> => {
+  public getAbandonmentAnalytics = async (req: Request, res: Response): Promise<Response> => {
     try {
       const { contentId } = req.params;
       const analytics = await this.contentService.getAbandonmentAnalytics(contentId);
       
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: analytics,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener analíticas de abandono';
-      logger.error(`Error al obtener analíticas de abandono para contenido ${req.params.contentId}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener analíticas de abandono para contenido ${req.params.contentId}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene estadísticas de efectividad para un tema
    */
-  public getEffectivenessAnalytics = async (req: Request, res: Response): Promise<void> => {
+  public getEffectivenessAnalytics = async (req: Request, res: Response): Promise<Response> => {
     try {
       const { topicId } = req.params;
       const analytics = await this.contentService.getEffectivenessAnalytics(topicId);
       
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: analytics,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener analíticas de efectividad';
-      logger.error(`Error al obtener analíticas de efectividad para tema ${req.params.topicId}: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener analíticas de efectividad para tema ${req.params.topicId}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 
   /**
    * Obtiene contenido problemático
    */
-  public getProblematicContent = async (_req: Request, res: Response): Promise<void> => {
+  public getProblematicContent = async (_req: Request, res: Response): Promise<Response> => {
     try {
       const problematicContent = await this.contentService.findProblematicContent();
       
-      res.status(StatusCodes.OK).json({
+      return res.status(StatusCodes.OK).json({
         status: 'success',
         data: problematicContent,
       });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error desconocido al obtener contenido problemático';
-      logger.error(`Error al obtener contenido problemático: ${errorMessage}`);
-      throw error;
+      const response: ErrorResponse = {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      };
+      this.logger.error(`Error al obtener contenido problemático: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      return res.status(500).json(response);
     }
   };
 }

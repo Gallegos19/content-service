@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import bodyParser from 'body-parser';
 import { container } from '../../../config/container';
 import { validate } from '@shared/middlewares/validation.middleware';
 import { 
@@ -12,6 +13,9 @@ import { ContentController } from '@infrastructure/web/content/controllers/conte
 
 const router = Router();
 const contentController = container.get<ContentController>(TYPES.ContentController);
+
+// Add this for JSON body parsing
+const jsonParser = bodyParser.json();
 
 /**
  * @swagger
@@ -48,7 +52,7 @@ router.get('/modules', (req, res) => contentController.getModules(req, res));
 
 /**
  * @swagger
- * /api/content:
+ * /api/content/:
  *   post:
  *     summary: Crea un nuevo contenido
  *     tags: [Content]
@@ -122,7 +126,7 @@ router.get('/:id', (req, res) => contentController.getContentById(req, res));
  *             schema:
  *               $ref: '#/components/schemas/ContentResponse'
  */
-router.put('/:id', validate(updateContentSchema), (req, res) => contentController.updateContent(req, res));
+router.put('/:id', validate(updateContentSchema), contentController.updateContent);
 
 /**
  * @swagger
@@ -513,6 +517,7 @@ router.get('/by-age/:age', (req, res) => contentController.getContentByAge(req, 
  *             required:
  *               - userId
  *               - contentId
+ *               - status
  *             properties:
  *               userId:
  *                 type: string
@@ -563,8 +568,46 @@ router.get('/by-age/:age', (req, res) => contentController.getContentByAge(req, 
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  */
-router.post('/track-progress', validate(trackProgressSchema), (req, res) => 
-  contentController.trackProgress(req, res)
+import { NextFunction, Request, Response } from 'express';
+
+const validateProgress = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.body) {
+    return res.status(400).json({ 
+      status: 'error',
+      message: 'Request body is required' 
+    });
+  }
+  
+  // Extract fields (handling both snake_case and camelCase)
+  const userId = req.body.user_id || req.body.userId;
+  const contentId = req.body.content_id || req.body.contentId;
+  const status = req.body.status;
+  
+  // Validate only required fields
+  const result = trackProgressSchema.safeParse({
+    user_id: userId,
+    content_id: contentId,
+    status
+  });
+  
+  if (!result.success) {
+    return res.status(400).json({ 
+      status: 'error',
+      message: result.error.issues.map(issue => issue.message).join(', ') 
+    });
+  }
+  
+  // Ensure the body has the expected fields
+  req.body.userId = userId;
+  req.body.contentId = contentId;
+  
+  next();
+};
+
+router.post('/track-progress', 
+  jsonParser, 
+  validateProgress,
+  (req, res) => contentController.trackProgress(req, res)
 );
 
 /**
@@ -680,7 +723,7 @@ router.get('/user-progress/:userId', (req, res) => contentController.getUserProg
  *       400:
  *         $ref: '#/components/responses/ValidationError'
  */
-router.post('/track-interaction', validate(trackInteractionSchema), (req, res) => 
+router.post('/track-interaction', jsonParser, validate(trackInteractionSchema), (req, res) => 
   contentController.trackInteraction(req, res)
 );
 

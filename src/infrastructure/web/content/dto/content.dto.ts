@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { ContentWithTopics } from "@domain/entities";
+import { ContentType, DifficultyLevel } from "@domain/enums";
 
 // Common schemas
-const contentTypes = ['video', 'article', 'quiz', 'interactive', 'other'] as const;
-const difficultyLevels = ['beginner', 'intermediate', 'advanced'] as const;
+const contentTypes = ['VIDEO', 'ARTICLE', 'QUIZ', 'INTERACTIVE', 'OTHER'] as const;
+const difficultyLevels = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] as const;
 const progressStatuses = ['not_started', 'in_progress', 'completed', 'paused'] as const;
 const interactionActions = ['start', 'pause', 'resume', 'complete', 'abandon'] as const;
 const deviceTypes = ['mobile', 'tablet', 'desktop'] as const;
@@ -11,14 +13,14 @@ const platforms = ['ios', 'android', 'web'] as const;
 // Content Schema
 export const createContentSchema = z.object({
   title: z.string().min(1, 'El título es requerido').max(255, 'El título no puede tener más de 255 caracteres'),
-  description: z.string().optional(),
+  description: z.string().nullable(),
   content_type: z.enum(contentTypes),
   main_media_id: z.string().uuid('ID de archivo multimedia no válido'),
   thumbnail_media_id: z.string().uuid('ID de miniatura no válido'),
-  difficulty_level: z.enum(difficultyLevels).default('beginner'),
-  target_age_min: z.number().int().min(0).default(8),
-  target_age_max: z.number().int().min(1).default(18),
-  reading_time_minutes: z.number().int().positive('El tiempo de lectura debe ser un número positivo').optional(),
+  difficulty_level: z.enum(difficultyLevels).default('BEGINNER'),
+  target_age_min: z.number().int().min(0, 'La edad mínima debe ser 0 o más'),
+  target_age_max: z.number().int().min(1, 'La edad máxima debe ser 1 o más'),
+  reading_time_minutes: z.number().int().positive('El tiempo de lectura debe ser un número positivo').nullable().optional().default(null),
   duration_minutes: z.number().int().positive('La duración debe ser un número positivo').optional(),
   is_downloadable: z.boolean().default(false),
   is_featured: z.boolean().default(false),
@@ -31,7 +33,19 @@ export const createContentSchema = z.object({
 export type CreateContentDto = z.infer<typeof createContentSchema>;
 
 // Update Content Schema
-export const updateContentSchema = createContentSchema.partial();
+export const updateContentSchema = z.object({
+  title: z.string().min(1, 'Title is required').optional(),
+  description: z.string().optional(),
+  content_type: z.nativeEnum(ContentType).optional(),
+  main_media_id: z.string().uuid().optional(),
+  thumbnail_media_id: z.string().uuid().optional(),
+  difficulty_level: z.nativeEnum(DifficultyLevel).optional(),
+  target_age_min: z.number().int().min(0).optional(),
+  target_age_max: z.number().int().min(0).optional(),
+  duration_minutes: z.number().int().min(0).optional(),
+  topic_ids: z.array(z.string().uuid()).optional()
+});
+
 export type UpdateContentDto = z.infer<typeof updateContentSchema>;
 
 // Content Progress Schema
@@ -138,3 +152,39 @@ export const problematicContentResponseSchema = z.object({
 });
 
 export type ProblematicContentResponseDto = z.infer<typeof problematicContentResponseSchema>;
+
+export const contentDtoSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string().nullable(),
+  content_type: z.nativeEnum(ContentType),
+  main_media_id: z.string().uuid().nullable(),
+  thumbnail_media_id: z.string().uuid().nullable(),
+  difficulty_level: z.nativeEnum(DifficultyLevel),
+  target_age_min: z.number(),
+  target_age_max: z.number(),
+  reading_time_minutes: z.number().nullable(),
+  duration_minutes: z.number().nullable(),
+  is_downloadable: z.boolean(),
+  is_featured: z.boolean(),
+  view_count: z.number(),
+  completion_count: z.number(),
+  rating_average: z.number().nullable(),
+  rating_count: z.number(),
+  metadata: z.record(z.any()).nullable(),
+  is_published: z.boolean(),
+  published_at: z.date().nullable(),
+  created_at: z.date(),
+  updated_at: z.date(),
+  deleted_at: z.date().nullable(),
+  created_by: z.string().nullable(),
+  updated_by: z.string().nullable(),
+});
+
+export type ContentDto = z.infer<typeof contentDtoSchema>;
+
+export interface ErrorResponse {
+  status: 'error' | 'success';
+  message: string;
+  errors?: Array<{ code: string; message: string }>;
+}

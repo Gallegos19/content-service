@@ -24,9 +24,16 @@ export class ContentInteractionLogRepository {
     return true;
   }
 
-  // Métodos avanzados (stubs, para implementar luego si tu dominio lo requiere)
-  // async findLogsByContentId(contentId: string): Promise<ContentInteractionLog[]> {
-  //   throw new Error('Not implemented');
-  // }
+  async findLogsByContentId(contentId: string): Promise<ContentInteractionLog[]> {
+    const logs = await prisma.contentInteractionLog.findMany({
+      where: {
+        content_id: contentId,
+      }
+    });
+    return logs.map(log => ({
+      ...log,
+      metadata: log.metadata ? JSON.parse(log.metadata as string) : null
+    }));
+  }
 
 }

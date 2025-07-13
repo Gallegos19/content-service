@@ -3,7 +3,7 @@ import { z, ZodError } from 'zod';
 import { logger } from '../utils/logger';
 import { StatusCodes } from 'http-status-codes';
 
-type SchemaType<T> = z.ZodType<T, z.ZodTypeDef, T>;
+type SchemaType<T> = z.ZodObject<z.ZodRawShape>;
 
 export const validate = <T>(schema: SchemaType<T>) => {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -15,9 +15,16 @@ export const validate = <T>(schema: SchemaType<T>) => {
       
       // Validar los parámetros de la ruta
       if (Object.keys(req.params).length > 0) {
-        req.params = await schema.pick({
-          ...Object.keys(req.params).reduce((acc, key) => ({ ...acc, [key]: true }), {})
-        }).parseAsync(req.params);
+        // Solo validar si el esquema tiene los campos correspondientes
+        const paramKeys = Object.keys(req.params);
+        const hasParamSchema = paramKeys.some(key => key in schema.shape);
+        
+        if (hasParamSchema) {
+          req.params = await schema.pick(
+            paramKeys.filter(key => key in schema.shape)
+              .reduce((acc, key) => ({ ...acc, [key]: true }), {})
+          ).parseAsync(req.params);
+        }
       }
       
       // Validar los query parameters

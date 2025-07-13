@@ -1,9 +1,9 @@
 export enum ContentType {
-  VIDEO = 'video',
-  ARTICLE = 'article',
-  QUIZ = 'quiz',
-  INTERACTIVE = 'interactive',
-  OTHER = 'other',
+  VIDEO = 'VIDEO',
+  ARTICLE = 'ARTICLE',
+  QUIZ = 'QUIZ',
+  INTERACTIVE = 'INTERACTIVE',
+  OTHER = 'OTHER',
 }
 
 export enum DifficultyLevel {

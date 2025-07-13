@@ -26,12 +26,31 @@ export class TopicRepository /* implements ITopicRepository */ {
     return true;
   }
 
-  // Métodos de dominio avanzados (stubs, para implementar luego)
+  // Métodos de dominio avanzados 
   async findTopics(): Promise<Array<{ id: string; name: string; }>> {
-    throw new Error('Not implemented');
+    const topics = await prisma.topic.findMany({
+      select: {
+        id: true,
+        name: true
+      },
+      where: {
+        deleted_at: null
+      }
+    });
+    return topics;
   }
 
   async findTopicById(id: string): Promise<{ id: string; name: string; } | null> {
-    throw new Error('Not implemented');
+    const topic = await prisma.topic.findUnique({
+      select: {
+        id: true,
+        name: true
+      },
+      where: {
+        id,
+        deleted_at: null
+      }
+    });
+    return topic;
   }
 }

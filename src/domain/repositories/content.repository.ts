@@ -18,7 +18,10 @@ export interface IContentRepository {
   findById(id: string): Promise<ContentWithTopics | null>;
   findMany(filters: ContentFilters): Promise<PaginatedResult<ContentWithTopics>>;
   create(data: Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Content>;
-  update(id: string, data: Partial<Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Content>;
+  update(
+    id: string,
+    data: Partial<Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>
+  ): Promise<ContentWithTopics>;
   delete(id: string): Promise<boolean>;
   
   // Content-Topic relationship
@@ -69,12 +72,16 @@ export interface IContentRepository {
   
   // Tip operations
   getAllTips(): Promise<Tip[]>;
-  createTip(data: Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Tip>;
+  createTip(data: Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { metadata?: Record<string, any> | null }): Promise<Tip>;
   getTipById(id: string): Promise<Tip | null>;
   updateTip(id: string, data: Partial<Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Tip>;
   deleteTip(id: string): Promise<boolean>;
   findTopics(): Promise<Array<{ id: string; name: string; }>>;
   findTopicById(id: string): Promise<{ id: string; name: string; } | null>;
+  
+  // Module operations
+  findAllModules(): Promise<Array<{ id: string; name: string }>>;
+  findModuleById(id: string): Promise<{ id: string; name: string } | null>;
   
   // Bulk operations
   bulkTrackProgress(progressData: Array<{

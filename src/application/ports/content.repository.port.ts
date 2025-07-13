@@ -7,6 +7,10 @@ export interface IContentRepository {
   findContentByTopic(topicId: string): Promise<ContentWithTopics[]>;
   findContentByAge(age: number): Promise<ContentWithTopics[]>;
   
+  // Module operations
+  findAllModules(): Promise<Array<{ id: string; name: string }>>;
+  findModuleById(id: string): Promise<{ id: string; name: string } | null>;
+
   // Progress tracking
   trackUserProgress(progressData: {
     userId: string;
