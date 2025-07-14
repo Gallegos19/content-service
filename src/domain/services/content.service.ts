@@ -24,18 +24,25 @@ import {
 } from '@domain/entities';
 import { AbandonmentReason } from '@domain/enums';
 import { JsonValue } from '@prisma/client/runtime/library';
-
-// Define DTOs
-interface CreateContentDto extends Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> {}
-interface UpdateContentDto extends Partial<Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>> {
-  color_hex?: string;
-  prerequisites?: string[];
-}
+import { IContentInteractionLogRepository } from '@domain/repositories/contentInteractionLog.repository';
+import { IUserTipsHistoryRepository } from '@domain/repositories/userTipsHistory.repository';
+import { IContentProgressRepository } from '@domain/repositories/contentProgress.repository';
+import { ITipsRepository } from '@domain/repositories/tips.repository';
+import { IContentTopicRepository } from '../repositories/contentTopic.repository';
+import { IModuleRepository } from '../repositories/module.repository';
+import { IContentAnalyticsRepository } from '../repositories/contentAnalytics.repository';
 
 @injectable()
-export class ContentService implements IContentService {
+export class ContentService {
   constructor(
-    @inject(TYPES.ContentRepository) private contentRepository: IContentRepository
+    @inject(TYPES.ContentRepository) private contentRepository: IContentRepository,
+    @inject(TYPES.ContentInteractionLogRepository) private contentInteractionLogRepository: IContentInteractionRepository,
+    @inject(TYPES.UserTipsHistoryRepository) private userTipsHistoryRepository: IUserTipsHistoryRepository,
+    @inject(TYPES.ContentProgressRepository) private contentProgressRepository: IContentProgressRepository,
+    @inject(TYPES.TipsRepository) private tipRepository: ITipsRepository,
+    @inject(TYPES.ContentTopicRepository) private contentTopicRepository: IContentTopicRepository,
+    @inject(TYPES.ModuleRepository) private moduleRepository: IModuleRepository,
+    @inject(TYPES.ContentAnalyticsRepository) private contentAnalyticsRepository: IContentAnalyticsRepository
   ) { }
 
   // ===== MODULE OPERATIONS =====
@@ -369,7 +376,7 @@ export class ContentService implements IContentService {
   async getAllTopics(): Promise<Topic[]> {
     try {
       logger.info('Getting all topics');
-      const topics = await this.contentRepository.getAllTopics();
+      const topics = await this.contentTopicRepository.findAllTopics();
       return topics.map((topic: Topic) => ({
         ...topic,
         color_hex: topic.color_hex || '#000000'
@@ -398,8 +405,9 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Creating topic: ${data.name}`);
-      return await this.contentRepository.createTopic({
+      return await this.contentTopicRepository.createTopic({
         ...data,
+        deleted_at: null,
         prerequisites: Array.isArray(data.prerequisites) 
           ? data.prerequisites.filter(p => typeof p === 'string')
           : []
@@ -417,7 +425,7 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Getting topic by id: ${id}`);
-      return await this.contentRepository.getTopicById(id);
+      return await this.contentTopicRepository.findTopicById(id);
     } catch (error) {
       logger.error(`Error getting topic by id ${id}:`, error);
       throw error;
@@ -430,7 +438,7 @@ export class ContentService implements IContentService {
         throw new Error('ID del tema es requerido');
       }
 
-      // Validaciones similares a create pero opcionales
+      // Validaciones
       if (data.name !== undefined && !data.name.trim()) {
         throw new Error('El nombre del tema no puede estar vacío');
       }
@@ -446,14 +454,16 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Updating topic: ${id}`);
-      const updateData = {
+      const updateData: Partial<Topic> = {
         ...data,
+        name: data.name || '',
+        slug: data.slug || '',
         color_hex: data.color_hex === null ? undefined : data.color_hex || '#000000',
         prerequisites: data.prerequisites && Array.isArray(data.prerequisites) 
           ? data.prerequisites.filter(Boolean) as string[] 
           : undefined
       };
-      return await this.contentRepository.updateTopic(id, updateData);
+      return await this.contentTopicRepository.updateTopic(id, updateData);
     } catch (error) {
       logger.error(`Error updating topic ${id}:`, error);
       throw error;
@@ -467,7 +477,7 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Deleting topic: ${id}`);
-      await this.contentRepository.deleteTopic(id);
+      await this.contentTopicRepository.deleteTopic(id);
     } catch (error) {
       logger.error(`Error deleting topic ${id}:`, error);
       throw error;
@@ -478,7 +488,7 @@ export class ContentService implements IContentService {
   async getAllTips(): Promise<Tip[]> {
     try {
       logger.info('Getting all tips');
-      return await this.contentRepository.getAllTips();
+      return await this.tipRepository.findAll();
     } catch (error) {
       logger.error('Error getting all tips:', error);
       throw error;
@@ -507,7 +517,10 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Creating tip: ${data.title}`);
-      return await this.contentRepository.createTip(data);
+      return await this.tipRepository.create({
+        ...data,
+        deleted_at: null
+      });
     } catch (error) {
       logger.error('Error creating tip:', error);
       throw error;
@@ -521,7 +534,7 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Getting tip by id: ${id}`);
-      return await this.contentRepository.getTipById(id);
+      return await this.tipRepository.findById(id);
     } catch (error) {
       logger.error(`Error getting tip by id ${id}:`, error);
       throw error;
@@ -554,7 +567,7 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Updating tip: ${id}`);
-      return await this.contentRepository.updateTip(id, data);
+      return await this.tipRepository.update(id, data);
     } catch (error) {
       logger.error(`Error updating tip ${id}:`, error);
       throw error;
@@ -568,7 +581,7 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Deleting tip: ${id}`);
-      await this.contentRepository.deleteTip(id);
+      await this.tipRepository.delete(id);
     } catch (error) {
       logger.error(`Error deleting tip ${id}:`, error);
       throw error;
@@ -583,7 +596,7 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Adding topic ${topicId} to content ${contentId} (primary: ${isPrimary})`);
-      await this.contentRepository.addTopicToContent(contentId, topicId, isPrimary);
+      await this.contentTopicRepository.addTopicToContent(contentId, topicId, isPrimary);
     } catch (error) {
       logger.error(`Error adding topic ${topicId} to content ${contentId}:`, error);
       throw error;
@@ -597,7 +610,7 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Removing topic ${topicId} from content ${contentId}`);
-      await this.contentRepository.removeTopicFromContent(contentId, topicId);
+      await this.contentTopicRepository.removeTopicFromContent(contentId, topicId);
     } catch (error) {
       logger.error(`Error removing topic ${topicId} from content ${contentId}:`, error);
       throw error;
@@ -611,7 +624,7 @@ export class ContentService implements IContentService {
       }
 
       logger.info(`Setting primary topic ${topicId} for content ${contentId}`);
-      await this.contentRepository.setPrimaryTopic(contentId, topicId);
+      await this.contentTopicRepository.setPrimaryTopic(contentId, topicId);
     } catch (error) {
       logger.error(`Error setting primary topic ${topicId} for content ${contentId}:`, error);
       throw error;

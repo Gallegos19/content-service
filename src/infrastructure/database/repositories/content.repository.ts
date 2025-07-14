@@ -50,51 +50,26 @@ export class ContentRepository implements IContentRepository {
   ) {}
 
   // Content CRUD operations
-  async create(
-    data: Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'contentTopics'> & {
-      contentTopics?: Array<{
-        topic_id: string;
-        is_primary: boolean;
-      }>
-    }
-  ): Promise<Content> {
-    try {
-      // Remove topic_ids if it exists
-      const { topic_ids, ...prismaData } = data as any;
-      
-      const created = await this.prisma.content.create({
-        data: {
-          ...prismaData,
-          content_type: this.mapContentType(prismaData.content_type),
-          difficulty_level: this.mapDifficultyLevel(prismaData.difficulty_level),
-          metadata: prismaData.metadata ? JSON.stringify(prismaData.metadata) : Prisma.JsonNull,
-          target_age_min: prismaData.target_age_min === null ? undefined : prismaData.target_age_min,
-          target_age_max: prismaData.target_age_max === null ? undefined : prismaData.target_age_max,
-          reading_time_minutes: prismaData.reading_time_minutes === null ? undefined : prismaData.reading_time_minutes,
-          duration_minutes: prismaData.duration_minutes === null ? undefined : prismaData.duration_minutes,
-          rating_average: prismaData.rating_average === null ? undefined : prismaData.rating_average,
-          published_at: prismaData.published_at === null ? undefined : prismaData.published_at,
-          created_by: prismaData.created_by === null ? undefined : prismaData.created_by,
-          updated_by: prismaData.updated_by === null ? undefined : prismaData.updated_by,
-          contentTopics: prismaData.contentTopics ? {
-            create: prismaData.contentTopics.map((topic: { topic_id: string; is_primary: boolean }) => ({
-              topic: { connect: { id: topic.topic_id } },
-              is_primary: topic.is_primary
-            }))
-          } : undefined
-        },
-        include: { contentTopics: true }
-      });
-
-      return this.transformToContentWithTopics(created);
-    } catch (error) {
-      logger.error('Error creating content:', error);
-      throw error;
-    }
+  async create(data: Omit<Content, "id" | "created_at" | "updated_at" | "deleted_at">): Promise<Content> {
+    return this.prisma.content.create({
+      data: {
+        ...data,
+        metadata: data.metadata === null ? Prisma.JsonNull : data.metadata,
+        contentTopics: data.contentTopics ? {
+          create: data.contentTopics.map(topic => ({ topic_id: topic.topicId }))
+        } : undefined
+      }
+    });
   }
 
   async findById(id: string): Promise<ContentWithTopics | null> {
     try {
+      // Validate UUID format
+      // if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      //   logger.error(`Invalid UUID format for content ID: ${id}`);
+      //   return null;
+      // }
+
       const result = await this.prisma.content.findUnique({
         where: { id },
         include: {
@@ -105,9 +80,7 @@ export class ContentRepository implements IContentRepository {
           }
         }
       });
-
       if (!result) return null;
-
       return this.transformToContentWithTopics(result);
     } catch (error) {
       logger.error(`Error finding content by id ${id}:`, error);
@@ -872,7 +845,18 @@ export class ContentRepository implements IContentRepository {
   // Tip operations
   async getAllTips(): Promise<Tip[]> {
     try {
+      logger.info('Fetching all tips from database');
+      
       const tips = await this.prisma.tip.findMany();
+      
+      // Validate each tip's ID format
+      const invalidTips = tips.filter(tip => !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tip.id));
+      
+      if (invalidTips.length > 0) {
+        logger.error(`Found ${invalidTips.length} tips with invalid UUID format:`, 
+          invalidTips.map(t => ({id: t.id, title: t.title})));
+      }
+      
       return tips.map(tip => ({
         id: tip.id,
         title: tip.title,
@@ -904,7 +888,10 @@ export class ContentRepository implements IContentRepository {
         metadata: tip.metadata ? tip.metadata as Record<string, any> : {}
       }));
     } catch (error) {
-      logger.error('Error getting all tips:', error);
+      logger.error('Error getting all tips:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw error;
     }
   }

@@ -1,6 +1,6 @@
 // Dependency injection tokens
 import { Container } from 'inversify';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { Content, Tip, Topic } from '@domain/entities/content.entity';
 
 export const TYPES = {
@@ -9,6 +9,15 @@ export const TYPES = {
   AnalyticsRepository: Symbol.for('AnalyticsRepository'),
   ProgressRepository: Symbol.for('ProgressRepository'),
   InteractionRepository: Symbol.for('InteractionRepository'),
+  ContentInteractionLogRepository: Symbol.for('ContentInteractionLogRepository'),
+  UserTipsHistoryRepository: Symbol.for('UserTipsHistoryRepository'),
+  ContentProgressRepository: Symbol.for('ContentProgressRepository'),
+  TopicRepository: Symbol.for('TopicRepository'),
+  TipsRepository: Symbol.for('TipsRepository'),
+  ContentTopicRepository: Symbol.for('ContentTopicRepository'),
+  ModuleRepository: Symbol.for('ModuleRepository'),
+  ContentAnalyticsRepository: Symbol.for('ContentAnalyticsRepository'),
+  ContentInteractionRepository: Symbol.for('ContentInteractionRepository'),
   
   // Services
   ContentService: Symbol.for('ContentService'),
@@ -17,16 +26,6 @@ export const TYPES = {
   PrismaClient: Symbol.for('PrismaClient'),
   
   // Use Cases
-  FindAllModulesUseCase: Symbol.for('FindAllModulesUseCase'),
-  FindModuleByIdUseCase: Symbol.for('FindModuleByIdUseCase'),
-  FindContentByTopicUseCase: Symbol.for('FindContentByTopicUseCase'),
-  FindContentByAgeUseCase: Symbol.for('FindContentByAgeUseCase'),
-  TrackUserProgressUseCase: Symbol.for('TrackUserProgressUseCase'),
-  LogInteractionUseCase: Symbol.for('LogInteractionUseCase'),
-  FindContentByIdUseCase: Symbol.for('FindContentByIdUseCase'),
-  CreateContentUseCase: Symbol.for('CreateContentUseCase'),
-  UpdateContentUseCase: Symbol.for('UpdateContentUseCase'),
-  DeleteContentUseCase: Symbol.for('DeleteContentUseCase'),
   
   // Controllers
   ContentController: Symbol.for('ContentController'),
@@ -197,7 +196,7 @@ export interface FileUpload {
 
 // Prisma types
 export type PrismaContentData = Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & {
-  metadata: Record<string, any> | null;
+  metadata: Prisma.JsonValue | null;
 };
 
 export type PrismaTipData = Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & {
@@ -211,6 +210,8 @@ export type PrismaTopicData = Omit<Topic, 'id' | 'created_at' | 'updated_at' | '
   is_active: boolean;
   sort_order: number;
 };
+
+export type TipUpdateInput = Prisma.TipUpdateInput;
 
 // Importar tipos de contenido y enums según sea necesario
 // Los tipos específicos se importarán directamente en los archivos que los necesiten

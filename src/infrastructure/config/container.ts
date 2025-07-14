@@ -1,146 +1,70 @@
-import 'reflect-metadata';
 import { Container } from 'inversify';
-import { PrismaClient } from '@prisma/client';
+import { TYPES } from '@shared/constants/types';
+import { Logger } from 'winston';
+import { logger } from '@shared/utils/logger';
 
-// Domain Services
-import { ContentService } from '@domain/services/content.service';
-
-// Infrastructure Repositories
-import { ContentRepository } from '../database/repositories/content.repository';
+// Repositories
+import { ContentRepository } from '@infrastructure/database/repositories/content.repository';
+import { ContentTopicRepository } from '@infrastructure/database/repositories/contentTopic.repository';
+import { ModuleRepository } from '@infrastructure/database/repositories/module.repository';
+import { ContentAnalyticsRepository } from '@infrastructure/database/repositories/contentAnalytics.repository';
+import { ContentProgressRepository } from '@infrastructure/database/repositories/contentProgress.repository';
+import { ContentInteractionRepository } from '@infrastructure/database/repositories/contentInteraction.repository';
+import { UserTipsHistoryRepository } from '@infrastructure/database/repositories/userTipsHistory.repository';
+import { TipsRepository } from '@infrastructure/database/repositories/tips.repository';
+import { TopicRepository } from '@infrastructure/database/repositories/topic.repository';
 
 // Domain Interfaces
 import { IContentRepository } from '@domain/repositories/content.repository';
-
-// Use Cases
-import {
-  FindAllModulesUseCase,
-  FindModuleByIdUseCase,
-  FindContentByTopicUseCase,
-  FindContentByAgeUseCase,
-  TrackUserProgressUseCase,
-  LogInteractionUseCase,
-  UpdateContentUseCase
-} from '@application/use-cases/content';
-
-// Controllers
-import { ContentController } from '../web/content/controllers/content.controller';
-
-// Shared
-import { TYPES } from '@shared/constants/types';
-import { logger } from '@shared/utils/logger';
-import { Logger } from 'winston';
+import { IContentTopicRepository } from '@domain/repositories/contentTopic.repository';
+import { IModuleRepository } from '@domain/repositories/module.repository';
+import { IContentAnalyticsRepository } from '@domain/repositories/contentAnalytics.repository';
+import { IContentProgressRepository } from '@domain/repositories/contentProgress.repository';
+import { IContentInteractionRepository } from '@domain/repositories/contentInteraction.repository';
+import { IUserTipsHistoryRepository } from '@domain/repositories/userTipsHistory.repository';
+import { ITipsRepository } from '@domain/repositories/tips.repository';
+import { ITopicRepository } from '@domain/repositories/topic.repository';
 
 const container = new Container();
 
-// Logger (singleton)
-container.bind(TYPES.Logger).toConstantValue(logger);
-
-// Database - Prisma Client (singleton)
-container.bind<PrismaClient>(TYPES.PrismaClient)
-  .toDynamicValue(() => {
-    const prisma = new PrismaClient({
-      log: [
-        { level: 'warn', emit: 'event' },
-        { level: 'info', emit: 'event' },
-        { level: 'error', emit: 'event' },
-      ],
-    });
-
-    // Set up event listeners
-    prisma.$on('warn', (e) => {
-      logger.warn(`Prisma Warning: ${e.message}`);
-    });
-
-    prisma.$on('info', (e) => {
-      logger.info(`Prisma Info: ${e.message}`);
-    });
-
-    prisma.$on('error', (e) => {
-      logger.error(`Prisma Error: ${e.message}`);
-    });
-
-    return prisma;
-  })
-  .inSingletonScope();
-
-// Repositories
+// Bind repositories
 container.bind<IContentRepository>(TYPES.ContentRepository)
   .to(ContentRepository)
   .inSingletonScope();
 
-// Domain Services
-container.bind<ContentService>(TYPES.ContentService)
-  .to(ContentService)
+container.bind<IContentTopicRepository>(TYPES.ContentTopicRepository)
+  .to(ContentTopicRepository);
+
+container.bind<IModuleRepository>(TYPES.ModuleRepository)
+  .to(ModuleRepository)
   .inSingletonScope();
 
-// Use Cases - Request scoped for better performance and isolation
-container.bind<FindAllModulesUseCase>(TYPES.FindAllModulesUseCase)
-  .to(FindAllModulesUseCase)
-  .inRequestScope();
+container.bind<IContentAnalyticsRepository>(TYPES.ContentAnalyticsRepository)
+  .to(ContentAnalyticsRepository)
+  .inSingletonScope();
 
-container.bind<FindModuleByIdUseCase>(TYPES.FindModuleByIdUseCase)
-  .to(FindModuleByIdUseCase)
-  .inRequestScope();
+container.bind<IContentProgressRepository>(TYPES.ContentProgressRepository)
+  .to(ContentProgressRepository)
+  .inSingletonScope();
 
-container.bind<FindContentByTopicUseCase>(TYPES.FindContentByTopicUseCase)
-  .to(FindContentByTopicUseCase)
-  .inRequestScope();
+container.bind<IContentInteractionRepository>(TYPES.ContentInteractionRepository)
+  .to(ContentInteractionRepository)
+  .inSingletonScope();
 
-container.bind<FindContentByAgeUseCase>(TYPES.FindContentByAgeUseCase)
-  .to(FindContentByAgeUseCase)
-  .inRequestScope();
+container.bind<IUserTipsHistoryRepository>(TYPES.UserTipsHistoryRepository)
+  .to(UserTipsHistoryRepository)
+  .inSingletonScope();
 
-container.bind<TrackUserProgressUseCase>(TYPES.TrackUserProgressUseCase)
-  .to(TrackUserProgressUseCase)
-  .inRequestScope();
+container.bind<ITipsRepository>(TYPES.TipsRepository)
+  .to(TipsRepository)
+  .inSingletonScope();
 
-container.bind<LogInteractionUseCase>(TYPES.LogInteractionUseCase)
-  .to(LogInteractionUseCase)
-  .inRequestScope();
+container.bind<ITopicRepository>(TYPES.TopicRepository)
+  .to(TopicRepository)
+  .inSingletonScope();
 
-container.bind<UpdateContentUseCase>(TYPES.UpdateContentUseCase)
-  .to(UpdateContentUseCase)
-  .inRequestScope();
+// Bind logger
+container.bind<Logger>(TYPES.Logger)
+  .toConstantValue(logger);
 
-// Controllers - Request scoped
-container.bind<ContentController>(TYPES.ContentController)
-  .to(ContentController)
-  .inRequestScope();
-
-// Export container instance
 export { container };
-
-// Health check function for the container
-export const validateContainer = (): boolean => {
-  try {
-    // Test basic bindings
-    const logger = container.get<Logger>(TYPES.Logger);
-    const prisma = container.get<PrismaClient>(TYPES.PrismaClient);
-    const contentRepository = container.get<IContentRepository>(TYPES.ContentRepository);
-    const contentService = container.get<ContentService>(TYPES.ContentService);
-    const contentController = container.get<ContentController>(TYPES.ContentController);
-
-    // Validate that all dependencies are properly injected
-    if (!logger || !prisma || !contentRepository || !contentService || !contentController) {
-      return false;
-    }
-
-    logger.info('Container validation successful - all dependencies are properly bound');
-    return true;
-  } catch (error) {
-    logger.error('Container validation failed:', error);
-    return false;
-  }
-};
-
-// Cleanup function for graceful shutdown
-export const cleanupContainer = async (): Promise<void> => {
-  try {
-    const prisma = container.get<PrismaClient>(TYPES.PrismaClient);
-    await prisma.$disconnect();
-    logger.info('👋 Container cleanup completed');
-  } catch (error) {
-    logger.error('Error during container cleanup:', error);
-    throw error;
-  }
-};

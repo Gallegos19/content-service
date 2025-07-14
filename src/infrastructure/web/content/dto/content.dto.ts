@@ -39,7 +39,7 @@ export const updateContentSchema = z.object({
   content_type: z.nativeEnum(ContentType).optional(),
   main_media_id: z.string().uuid().optional(),
   thumbnail_media_id: z.string().uuid().optional(),
-  difficulty_level: z.nativeEnum(DifficultyLevel).optional(),
+  difficulty_level: z.enum(difficultyLevels).optional(),
   target_age_min: z.number().int().min(0).optional(),
   target_age_max: z.number().int().min(0).optional(),
   duration_minutes: z.number().int().min(0).optional(),

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 // Re-export enums for consistency
 export type ContentType = 'VIDEO' | 'ARTICLE' | 'QUIZ' | 'INTERACTIVE' | 'OTHER';
@@ -53,7 +53,7 @@ export interface Content {
   completion_count: number;
   rating_average: number | null;
   rating_count: number;
-  metadata: Record<string, any> | null;
+  metadata: Prisma.JsonValue | null;
   is_published: boolean;
   published_at: Date | null;
   created_at: Date;
@@ -82,12 +82,12 @@ export interface ContentInteractionLog {
 
 export interface ContentTopic {
   id: string;
-  content_id: string;
-  topic_id: string;
-  is_primary: boolean;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
+  contentId: string;
+  topicId: string;
+  isPrimary: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
   topic?: Topic;
 }
 

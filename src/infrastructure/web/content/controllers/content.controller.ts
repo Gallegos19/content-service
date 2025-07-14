@@ -85,7 +85,6 @@ export class ContentController {
 
   constructor(
     @inject(TYPES.ContentService) private readonly contentService: ContentService,
-    @inject(TYPES.UpdateContentUseCase) private readonly updateContentUseCase: UpdateContentUseCase
   ) {}
 
   /**
@@ -193,10 +192,9 @@ export class ContentController {
         metadata: req.body.metadata ? JSON.stringify(req.body.metadata) : null
       });
       
-      const result = await this.updateContentUseCase.execute(
+      const result = await this.contentService.updateContent(
         id,
         {
-          id,
           ...validatedData,
           updated_by: req.user?.id
         }
@@ -249,15 +247,24 @@ export class ContentController {
   public getAllTips = async (_req: Request, res: Response): Promise<Response> => {
     try {
       const tips = await this.contentService.getAllTips();
+      
+      if (!tips || tips.length === 0) {
+        return res.status(StatusCodes.NOT_FOUND).json({
+          status: 'error',
+          message: 'No se encontraron tips'
+        });
+      }
+      
       return res.status(StatusCodes.OK).json({
         status: 'success',
-        data: tips
+        data: tips,
       });
     } catch (error: unknown) {
       const response: ErrorResponse = {
         status: 'error',
         message: error instanceof Error ? error.message : 'Unknown error'
       };
+      this.logger.error(`Error al obtener tips: ${error instanceof Error ? error.message : 'Error desconocido'}`);
       return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(response);
     }
   };

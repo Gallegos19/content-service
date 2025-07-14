@@ -6,11 +6,8 @@ import {
   ContentWithTopics, 
   UserProgress, 
   AbandonmentAnalytics, 
-  EffectivenessAnalytics, 
   ProblematicContent, 
   ContentInteractionLog,
-  Tip, 
-  Topic 
 } from '../entities/content.entity';
 
 export interface IContentRepository {
@@ -23,11 +20,6 @@ export interface IContentRepository {
     data: Partial<Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>
   ): Promise<ContentWithTopics>;
   delete(id: string): Promise<boolean>;
-  
-  // Content-Topic relationship
-  addTopicToContent(contentId: string, topicId: string, isPrimary?: boolean): Promise<void>;
-  removeTopicFromContent(contentId: string, topicId: string): Promise<void>;
-  setPrimaryTopic(contentId: string, topicId: string): Promise<void>;
   
   // Content progress tracking
   getUserProgress(userId: string, contentId: string): Promise<UserProgress | null>;
@@ -43,7 +35,6 @@ export interface IContentRepository {
   // Analytics
   getContentAnalytics(contentId: string): Promise<ContentAnalytics>;
   getAbandonmentAnalytics(contentId: string): Promise<AbandonmentAnalytics>;
-  getEffectivenessAnalytics(topicId: string): Promise<EffectivenessAnalytics>;
   findProblematicContent(threshold: number, limit: number): Promise<ProblematicContent[]>;
   
   // Interaction logging
@@ -53,7 +44,6 @@ export interface IContentRepository {
   trackInteraction(interaction: Omit<ContentInteractionLog, 'id' | 'actionTimestamp'>): Promise<ContentInteractionLog>;
   
   // Content discovery
-  findContentByTopic(topicId: string): Promise<ContentWithTopics[]>;
   findContentByAge(age: number): Promise<ContentWithTopics[]>;
   findFeaturedContent(limit?: number): Promise<ContentWithTopics[]>;
   findRelatedContent(contentId: string, limit?: number): Promise<ContentWithTopics[]>;
@@ -62,22 +52,6 @@ export interface IContentRepository {
   getUserProgressHistory(userId: string): Promise<UserProgress[]>;
   getCompletedContent(userId: string): Promise<ContentWithTopics[]>;
   getInProgressContent(userId: string): Promise<ContentWithTopics[]>;
-  
-  // Topic operations
-  getAllTopics(): Promise<Topic[]>;
-  createTopic(data: Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Topic>;
-  getTopicById(id: string): Promise<Topic | null>;
-  updateTopic(id: string, data: Partial<Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Topic>;
-  deleteTopic(id: string): Promise<boolean>;
-  
-  // Tip operations
-  getAllTips(): Promise<Tip[]>;
-  createTip(data: Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { metadata?: Record<string, any> | null }): Promise<Tip>;
-  getTipById(id: string): Promise<Tip | null>;
-  updateTip(id: string, data: Partial<Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Tip>;
-  deleteTip(id: string): Promise<boolean>;
-  findTopics(): Promise<Array<{ id: string; name: string; }>>;
-  findTopicById(id: string): Promise<{ id: string; name: string; } | null>;
   
   // Module operations
   findAllModules(): Promise<Array<{ id: string; name: string }>>;
