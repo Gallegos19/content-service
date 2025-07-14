@@ -1,6 +1,5 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+// src/domain/entities/content.entity.ts
 
-// Re-export enums for consistency
 export type ContentType = 'VIDEO' | 'ARTICLE' | 'QUIZ' | 'INTERACTIVE' | 'OTHER';
 export type DifficultyLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
 export type ContentStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
@@ -9,44 +8,54 @@ export type ContentStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 export type InteractionAction = 'start' | 'pause' | 'resume' | 'complete' | 'abandon';
 export type DeviceType = 'mobile' | 'tablet' | 'desktop';
 export type PlatformType = 'ios' | 'android' | 'web';
-export type AbandonmentReason = 'difficulty' | 'boring' | 'error' | 'other';
-export type CameFromType = 'home' | 'search' | 'recommendation' | 'topic';
+export type AbandonmentReason = 'difficulty' | 'boring' | 'error' | 'time_constraint' | 'technical_issue' | 'other';
+export type CameFromType = 'home' | 'search' | 'recommendation' | 'topic' | 'direct_link';
 export type ProgressStatus = 'not_started' | 'in_progress' | 'completed' | 'paused';
 
-// Base interfaces
-export interface Module {
+// Base Content interface
+export interface Content {
   id: string;
-  name: string;
-  description: string | undefined;
-  is_active: boolean;
+  title: string;
+  description: string | null;
+  content_type: ContentType;
+  main_media_id: string | null;
+  thumbnail_media_id: string | null;
+  difficulty_level: DifficultyLevel;
+  target_age_min: number;
+  target_age_max: number;
+  reading_time_minutes: number | null;
+  duration_minutes: number | null;
+  is_downloadable: boolean;
+  is_featured: boolean;
+  is_published: boolean;
+  published_at: Date | null;
+  view_count: number;
+  completion_count: number;
+  rating_average: number | null;
+  rating_count: number;
+  metadata: Record<string, any> | null;
   created_at: Date;
   updated_at: Date;
-  deleted_at: Date | undefined;
-  created_by: string | undefined;
-  updated_by: string | undefined;
-  moduleTopics?: ModuleTopic[];
+  deleted_at: Date | null;
+  created_by: string | null;
+  updated_by: string | null;
+  
+  // Relations
+  contentTopics?: ContentTopic[];
   moduleContent?: ModuleContent[];
-  topics?: Topic[];
-  content?: Content[];
+  progress?: ContentProgress[];
+  tips?: Tip[];
 }
 
-export interface ModuleTopic {
-  id: string;
-  module_id: string;
-  topic_id: string;
-  sort_order: number;
-  created_at: Date;
-  module: Module;
-}
-
+// Topic interface
 export interface Topic {
   id: string;
   name: string;
-  description: string | undefined;
+  description: string | null;
   slug: string;
-  icon_url: string | undefined;
+  icon_url: string | null;
   color_hex: string;
-  category: string | undefined;
+  category: string | null;
   difficulty_level: DifficultyLevel;
   target_age_min: number;
   target_age_max: number;
@@ -55,46 +64,17 @@ export interface Topic {
   sort_order: number;
   created_at: Date;
   updated_at: Date;
-  deleted_at: Date | undefined;
-  created_by: string | undefined;
-  updated_by: string | undefined;
+  deleted_at: Date | null;
+  created_by: string | null;
+  updated_by: string | null;
+  
+  // Relations
   contentTopics?: ContentTopic[];
   moduleTopics?: ModuleTopic[];
   modules?: Module[];
 }
 
-export interface Content {
-  id: string;
-  title: string;
-  description: string;
-  content_type: ContentType;
-  main_media_id?: string;
-  thumbnail_media_id?: string;
-  difficulty_level: DifficultyLevel;
-  target_age_min: number;
-  target_age_max: number;
-  reading_time_minutes?: number;
-  duration_minutes?: number;
-  is_downloadable: boolean;
-  is_featured: boolean;
-  view_count: number;
-  completion_count: number;
-  rating_average?: number;
-  rating_count: number;
-  metadata?: any;
-  is_published: boolean;
-  published_at?: Date;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at?: Date;
-  created_by?: string;
-  updated_by?: string;
-  contentTopics?: ContentTopic[];
-  moduleContent?: ModuleContent[];
-  progress?: ContentProgress[];
-  tips?: Tip[];
-}
-
+// Content-Topic relationship
 export interface ContentTopic {
   id: string;
   content_id: string;
@@ -105,6 +85,48 @@ export interface ContentTopic {
   content?: Content;
 }
 
+// Module interface
+export interface Module {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+  created_by: string | null;
+  updated_by: string | null;
+  
+  // Relations
+  moduleTopics?: ModuleTopic[];
+  moduleContent?: ModuleContent[];
+  topics?: Topic[];
+  content?: Content[];
+}
+
+// Module-Topic relationship
+export interface ModuleTopic {
+  id: string;
+  module_id: string;
+  topic_id: string;
+  sort_order: number;
+  created_at: Date;
+  module: Module;
+  topic: Topic;
+}
+
+// Module-Content relationship
+export interface ModuleContent {
+  id: string;
+  module_id: string;
+  content_id: string;
+  sort_order: number;
+  created_at: Date;
+  module: Module;
+  content: Content;
+}
+
+// Content Progress interface
 export interface ContentProgress {
   id: string;
   user_id: string;
@@ -113,42 +135,17 @@ export interface ContentProgress {
   progress_percentage: number;
   time_spent_seconds: number;
   last_position_seconds: number;
-  completion_rating?: number;
-  completion_feedback?: string;
-  first_accessed_at?: Date;
-  last_accessed_at?: Date;
-  completed_at?: Date;
+  completion_rating: number | null;
+  completion_feedback: string | null;
+  first_accessed_at: Date | null;
+  last_accessed_at: Date | null;
+  completed_at: Date | null;
   created_at: Date;
   updated_at: Date;
   content?: Content;
 }
 
-export interface Tip {
-  id: string;
-  title: string;
-  content: string;
-  tip_type: string;
-  category?: string;
-  target_age_min: number;
-  target_age_max: number;
-  difficulty_level: string;
-  action_required: boolean;
-  action_instructions?: string;
-  estimated_time_minutes?: number;
-  impact_level: string;
-  source_url?: string;
-  image_url?: string;
-  is_active: boolean;
-  valid_from?: Date;
-  valid_until?: Date;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at?: Date;
-  created_by?: string;
-  updated_by?: string;
-  content?: Content[];
-}
-
+// Content Interaction Log interface
 export interface ContentInteractionLog {
   id: string;
   userId: string;
@@ -165,10 +162,39 @@ export interface ContentInteractionLog {
   metadata: Record<string, any> | null;
 }
 
+// Tip interface
+export interface Tip {
+  id: string;
+  title: string;
+  content: string;
+  tip_type: string;
+  category: string | null;
+  target_age_min: number;
+  target_age_max: number;
+  difficulty_level: string;
+  action_required: boolean;
+  action_instructions: string | null;
+  estimated_time_minutes: number | null;
+  impact_level: string;
+  source_url: string | null;
+  image_url: string | null;
+  is_active: boolean;
+  is_featured: boolean;
+  prerequisites: string[];
+  related_tips: string[];
+  valid_from: Date | null;
+  valid_until: Date | null;
+  usage_count: number;
   content_id: string | null;
   metadata: Record<string, any> | null;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+  created_by: string | null;
+  updated_by: string | null;
 }
 
+// User Tips History interface
 export interface UserTipsHistory {
   id: string;
   user_id: string;
@@ -181,23 +207,6 @@ export interface UserTipsHistory {
   created_at: Date;
 }
 
-export interface ContentProgress {
-  id: string;
-  user_id: string;
-  content_id: string;
-  status: string;
-  progress_percentage: number;
-  time_spent_seconds: number;
-  last_position_seconds: number;
-  completion_rating: number | null;
-  completion_feedback: string | null;
-  first_accessed_at: Date | null;
-  last_accessed_at: Date | null;
-  completed_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
 // Extended interfaces
 export interface ContentWithTopics extends Content {
   contentTopics: ContentTopic[];
@@ -205,18 +214,20 @@ export interface ContentWithTopics extends Content {
 
 export interface ContentWithRelations extends Content {
   contentTopics: ContentTopic[];
+  moduleContent?: ModuleContent[];
+  progress?: ContentProgress[];
+  tips?: Tip[];
 }
 
 export interface TipWithHistory extends Tip {
   userTipsHistory?: UserTipsHistory[];
 }
 
-export interface ContentProgressExtended extends Omit<ContentProgress, 'status'> {
-  status: ProgressStatus;
+export interface ContentProgressExtended extends ContentProgress {
   content?: Content;
 }
 
-// Filter and analytics interfaces
+// Filter interfaces
 export interface ContentFilters {
   contentIds?: string[];
   topicId?: string;
@@ -238,6 +249,7 @@ export interface ContentFilters {
   endDate?: Date;
 }
 
+// Analytics interfaces
 export interface ContentAnalytics {
   content_id: string;
   title: string;
@@ -257,6 +269,88 @@ export interface ContentAnalytics {
   }>;
 }
 
+export interface AbandonmentAnalytics {
+  contentId: string;
+  title?: string;
+  totalStarts: number;
+  totalCompletions: number;
+  totalAbandons?: number;
+  completionRate: number;
+  abandonmentRate?: number;
+  avgAbandonmentPoint: number;
+  avgTimeToAbandon?: number;
+  abandonmentByDevice: Record<string, number>;
+  abandonmentByReason?: Record<string, number>;
+  peakAbandonmentTimes?: Array<{
+    timeRange: string;
+    count: number;
+    percentage: number;
+  }>;
+}
+
+export interface EffectivenessAnalytics {
+  topicId: string;
+  topicName: string;
+  totalContent: number;
+  publishedContent?: number;
+  totalViews: number;
+  totalCompletions: number;
+  uniqueUsers?: number;
+  averageCompletionRate: number;
+  averageTimeSpent: number;
+  averageRating: number;
+  averageCompletionTime?: number;
+  engagementScore?: number;
+  difficultyDistribution?: Record<DifficultyLevel, number>;
+  lastUpdated?: Date;
+  mostEngagedContent: Array<{
+    id: string;
+    title: string;
+    completionRate: number;
+    averageRating: number;
+    viewCount?: number;
+  }>;
+  leastEngagedContent: Array<{
+    id: string;
+    title: string;
+    completionRate: number;
+    averageRating: number;
+    viewCount?: number;
+  }>;
+  trendsLastMonth?: {
+    viewsChange: number;
+    completionRateChange: number;
+    ratingChange: number;
+  };
+}
+
+export interface ProblematicContent {
+  contentId: string;
+  title: string;
+  completionRate: number;
+  viewCount?: number;
+  avgAbandonmentPoint: number;
+  avgTimeToAbandon?: number;
+  priority: 'BAJO' | 'MEDIO' | 'ALTO' | 'CRÍTICO';
+  riskScore?: number;
+  recommendation: string;
+  issues?: Array<{
+    type: 'high_abandonment' | 'low_rating' | 'technical_issues' | 'content_difficulty';
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    description: string;
+    affectedUsers: number;
+  }>;
+  suggestedActions?: Array<{
+    action: string;
+    priority: 'low' | 'medium' | 'high';
+    estimatedImpact: 'low' | 'medium' | 'high';
+    estimatedEffort: 'low' | 'medium' | 'high';
+  }>;
+  lastAnalyzed?: Date;
+  trendDirection?: 'improving' | 'stable' | 'declining';
+}
+
+// User Progress interface (simplified for responses)
 export interface UserProgress {
   contentId: string;
   title: string;
@@ -268,54 +362,8 @@ export interface UserProgress {
   completedAt: Date | null;
   completionRating?: number | null;
   completionFeedback?: string | null;
-}
-
-export interface AbandonmentAnalytics {
-  contentId: string;
-  title?: string;
-  totalStarts: number;
-  totalCompletions: number;
-  completionRate: number;
-  avgAbandonmentPoint: number;
-  abandonmentByDevice: Record<string, number>;
-}
-
-export interface EffectivenessAnalytics {
-  topicId: string;
-  topicName: string;
-  totalContent: number;
-  totalViews: number;
-  totalCompletions: number;
-  averageCompletionRate: number;
-  averageTimeSpent: number;
-  averageRating: number;
-  averageCompletionTime?: number;
-  lastUpdated?: Date;
-  mostEngagedContent: Array<{
-    id: string;
-    title: string;
-    completionRate: number;
-    averageRating: number;
-  }>;
-  leastEngagedContent: Array<{
-    id: string;
-    title: string;
-    completionRate: number;
-    averageRating: number;
-  }>;
-}
-
-export interface ProblematicContent {
-  contentId: string;
-  title: string;
-  completionRate: number;
-  avgAbandonmentPoint: number;
-  priority: 'BAJO' | 'MEDIO' | 'ALTO' | 'CRÍTICO';
-  recommendation: string;
+  firstAccessedAt?: Date | null;
 }
 
 // Alias for backward compatibility
 export type InteractionLog = ContentInteractionLog;
-
-// Prisma client type
-export type PrismaClientType = PrismaClient;

@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { PrismaClient, Prisma, ContentType, DifficultyLevel } from '@prisma/client';
+import { PrismaClient, Prisma, ContentType, DifficultyLevel, UserProgressStatus } from '@prisma/client';
 import { IContentRepository } from '../../../domain/repositories/content.repository';
 import { 
   Content, 
@@ -11,127 +11,73 @@ import {
   EffectivenessAnalytics, 
   ProblematicContent, 
   ContentInteractionLog, 
-  Tip, 
-  Topic, 
-  Module, 
-  ModuleTopic, 
-  ContentTopic, 
-  CameFromType
-} from '../../../domain/entities/content.entity';
-import { 
   InteractionAction, 
   DeviceType, 
   PlatformType, 
-  AbandonmentReason,  
-} from '@domain/enums';
+  AbandonmentReason,
+  CameFromType,
+  ProgressStatus
+} from '../../../domain/entities/content.entity';
 import { PaginatedResult, TYPES } from '@shared/constants/types';
 import { logger } from '@shared/utils/logger';
-import { date } from 'zod';
-
-type PrismaTip = {
-  id: string;
-  title: string;
-  content: string;
-  difficulty_level: string;
-  target_age_min: number;
-  target_age_max: number;
-  created_at: Date;
-  updated_at: Date;
-  deleted_at: Date | null;
-}
-
-type TipWithMetadata = Prisma.TipGetPayload<{ include: { metadata: true } }>;
 
 @injectable()
 export class ContentRepository implements IContentRepository {
-  private prisma: PrismaClient;
-
   constructor(
-    @inject(TYPES.PrismaClient) prisma: PrismaClient
-  ) {
-    this.prisma = prisma;
-  }
+    @inject(TYPES.PrismaClient) private readonly prisma: PrismaClient
+  ) {}
 
-  // Content CRUD operations
-   async create(data: Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { topic_ids?: string[] }): Promise<Content> {
-    const result = await this.prisma.content.create({
-      data: {
-        ...data,
-        metadata: data.metadata ? JSON.stringify(data.metadata) : '{}',
-        contentTopics: {
-          create: data.topic_ids?.map((topicId: string) => ({
-            topic: {
-              connect: { id: topicId }
-            },
-            is_primary: false
-          })) || []
+  // ===== CONTENT CRUD OPERATIONS =====
+  async create(data: Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { topic_ids?: string[] }): Promise<Content> {
+    try {
+      const result = await this.prisma.content.create({
+        data: {
+          title: data.title,
+          description: data.description,
+          content_type: data.content_type,
+          main_media_id: data.main_media_id,
+          thumbnail_media_id: data.thumbnail_media_id,
+          difficulty_level: data.difficulty_level,
+          target_age_min: data.target_age_min,
+          target_age_max: data.target_age_max,
+          reading_time_minutes: data.reading_time_minutes,
+          duration_minutes: data.duration_minutes,
+          is_downloadable: data.is_downloadable,
+          is_featured: data.is_featured,
+          is_published: data.is_published,
+          published_at: data.published_at,
+          view_count: data.view_count,
+          completion_count: data.completion_count,
+          rating_average: data.rating_average,
+          rating_count: data.rating_count,
+          metadata: data.metadata ? JSON.stringify(data.metadata) : undefined,
+          created_by: data.created_by,
+          updated_by: data.updated_by,
+          contentTopics: {
+            create: data.topic_ids?.map((topicId: string) => ({
+              topic_id: topicId,
+              is_primary: false
+            })) || []
+          }
         },
-        tips: data.tips?.map((tip: Prisma.TipCreateInput) => ({
-          title: tip.title,
-          content: tip.content,
-          tip_type: tip.tip_type || 'daily',
-          category: tip.category,
-          target_age_min: tip.target_age_min || 8,
-          target_age_max: tip.target_age_max || 18,
-          difficulty_level: tip.difficulty_level || 'easy',
-          action_required: tip.action_required || false,
-          action_instructions: tip.action_instructions,
-          estimated_time_minutes: tip.estimated_time_minutes,
-          impact_level: tip.impact_level || 'medium',
-          source_url: tip.source_url,
-          image_url: tip.image_url
-        })) || []
-      },
-      include: {
-        contentTopics: {
-          include: {
-            topic: {
-              select: {
-                id: true,
-                name: true,
-                category: true,
-                target_age_min: true,
-                target_age_max: true,
-                difficulty_level: true,
-                is_active: true,
-                prerequisites: true,
-                sort_order: true
-              }
+        include: {
+          contentTopics: {
+            include: {
+              topic: true
             }
           }
-        },
-        tips: {
-          select: {
-            id: true,
-            title: true,
-            content: true,
-            tip_type: true,
-            category: true,
-            target_age_min: true,
-            target_age_max: true,
-            difficulty_level: true,
-            action_required: true,
-            action_instructions: true,
-            estimated_time_minutes: true,
-            impact_level: true,
-            source_url: true,
-            image_url: true,
-            metadata: true
-          }
         }
-      }
-    });
-    return this.transformToContentWithTopics(result);
+      });
+      
+      return this.transformToContent(result);
+    } catch (error) {
+      logger.error('Error creating content:', error);
+      throw error;
+    }
   }
 
   async findById(id: string): Promise<ContentWithTopics | null> {
     try {
-      // Validate UUID format
-      // if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
-      //   logger.error(`Invalid UUID format for content ID: ${id}`);
-      //   return null;
-      // }
-
       const result = await this.prisma.content.findUnique({
         where: { id },
         include: {
@@ -142,6 +88,7 @@ export class ContentRepository implements IContentRepository {
           }
         }
       });
+      
       if (!result) return null;
       return this.transformToContentWithTopics(result);
     } catch (error) {
@@ -198,38 +145,33 @@ export class ContentRepository implements IContentRepository {
     }
   ): Promise<ContentWithTopics> {
     try {
-      const updateData: Prisma.ContentUpdateInput = {
-        title: data.title,
-        description: data.description,
-        content_type: data.content_type ? this.mapContentType(data.content_type) : undefined,
-        difficulty_level: data.difficulty_level ? this.mapDifficultyLevel(data.difficulty_level) : undefined,
-        metadata: data.metadata ? JSON.stringify(data.metadata) : Prisma.JsonNull,
-        updated_at: new Date()
-      };
+      // Separate topic_ids and tips from content data
+      const { topic_ids, tips, ...contentData } = data;
       
-      // Eliminar topic_ids ya que se manejará por separado
-      delete data.topic_ids;
+      const updateData: Prisma.ContentUpdateInput = {
+        ...contentData,
+        metadata: contentData.metadata ? JSON.stringify(contentData.metadata) : undefined,
+        updated_at: new Date(),
+        contentTopics: topic_ids ? {
+          set: topic_ids.map(id => ({ id }))
+        } : undefined,
+        tips: tips ? {
+          set: tips.map(tip => ({ id: tip.id }))
+        } : undefined
+      };
 
       const updated = await this.prisma.content.update({
         where: { id },
         data: updateData,
-        include: { contentTopics: true }
+        include: {
+          contentTopics: {
+            include: {
+              topic: true
+            }
+          },
+          tips: true
+        }
       });
-
-      // Actualizar topics si se proporcionaron
-      if (data.topic_ids && Array.isArray(data.topic_ids)) {
-        await this.prisma.contentTopic.deleteMany({
-          where: { content_id: id }
-        });
-        
-        const topicIds: string[] = data.topic_ids;
-        await this.prisma.contentTopic.createMany({
-          data: topicIds.map((topic_id) => ({
-            content_id: id,
-            topic_id
-          }))
-        });
-      }
 
       return this.transformToContentWithTopics(updated);
     } catch (error) {
@@ -248,10 +190,9 @@ export class ContentRepository implements IContentRepository {
     }
   }
 
-  // Content-Topic relationship
+  // ===== CONTENT-TOPIC RELATIONSHIP =====
   async addTopicToContent(contentId: string, topicId: string, isPrimary = false): Promise<void> {
     try {
-      // Si es primary, primero quitar el flag primary de otros topics del mismo contenido
       if (isPrimary) {
         await this.prisma.contentTopic.updateMany({
           where: { content_id: contentId },
@@ -298,13 +239,11 @@ export class ContentRepository implements IContentRepository {
   async setPrimaryTopic(contentId: string, topicId: string): Promise<void> {
     try {
       await this.prisma.$transaction(async (tx) => {
-        // Quitar primary de todos los topics del contenido
         await tx.contentTopic.updateMany({
           where: { content_id: contentId },
           data: { is_primary: false }
         });
 
-        // Establecer el topic como primary
         await tx.contentTopic.update({
           where: {
             content_id_topic_id: {
@@ -321,7 +260,7 @@ export class ContentRepository implements IContentRepository {
     }
   }
 
-  // Content progress tracking
+  // ===== PROGRESS TRACKING =====
   async getUserProgress(userId: string, contentId: string): Promise<UserProgress | null> {
     try {
       const progress = await this.prisma.contentProgress.findUnique({
@@ -341,14 +280,14 @@ export class ContentRepository implements IContentRepository {
       return {
         contentId: progress.content_id,
         title: progress.content.title,
-        status: progress.status as any,
+        status: progress.status.toLowerCase() as ProgressStatus,
         progressPercentage: progress.progress_percentage,
         timeSpentSeconds: progress.time_spent_seconds,
         lastPositionSeconds: progress.last_position_seconds,
         lastAccessedAt: progress.last_accessed_at,
         completedAt: progress.completed_at,
-        completionRating: Number(progress.completion_rating),
-        completionFeedback: String(progress.completion_feedback),
+        completionRating: progress.completion_rating ? Number(progress.completion_rating) : null,
+        completionFeedback: progress.completion_feedback,
       };
     } catch (error) {
       logger.error(`Error getting user progress for user ${userId} and content ${contentId}:`, error);
@@ -365,44 +304,29 @@ export class ContentRepository implements IContentRepository {
     completionFeedback?: string;
   }): Promise<UserProgress> {
     try {
-      logger.info(`Tracking user progress for user ${userId} and content ${contentId}`);
-      
-      // Validate required fields
-      if (!userId || !contentId) {
-        throw new Error('User ID and Content ID are required');
-      }
-
-      const contentExists = await this.prisma.content.findUnique({
-        where: { id: contentId }
-      });
-      
-      if (!contentExists) {
-        throw new Error(`Content with ID ${contentId} does not exist`);
-      }
-      
       const now = new Date();
-      
-      // Set default values for undefined fields
-      const safeData = {
-        status: data.status || 'not_started',
-        progressPercentage: data.progressPercentage ?? 0,
-        timeSpentSeconds: data.timeSpentSeconds ?? 0,
-        lastPositionSeconds: data.lastPositionSeconds ?? 0,
-        completionRating: data.completionRating,
-        completionFeedback: data.completionFeedback
-      };
       
       const updateData: any = {
         last_accessed_at: now
       };
       
-      if (safeData.status) updateData.status = safeData.status.toUpperCase().replace('-', '_');
-      if (safeData.progressPercentage !== undefined) updateData.progress_percentage = safeData.progressPercentage;
-      if (safeData.timeSpentSeconds !== undefined) updateData.time_spent_seconds = safeData.timeSpentSeconds;
-      if (safeData.lastPositionSeconds !== undefined) updateData.last_position_seconds = safeData.lastPositionSeconds;
-      if (safeData.completionRating !== undefined) updateData.completion_rating = safeData.completionRating;
-      if (safeData.completionFeedback !== undefined) updateData.completion_feedback = safeData.completionFeedback;
-      if (safeData.status === 'completed') updateData.completed_at = now;
+      const statusMap = {
+        'not_started': UserProgressStatus.NOT_STARTED,
+        'in_progress': UserProgressStatus.IN_PROGRESS,
+        'completed': UserProgressStatus.COMPLETED,
+        'paused': UserProgressStatus.PAUSED
+      };
+      
+      if (data.status) {
+        updateData.status = statusMap[data.status];
+      }
+      
+      if (data.progressPercentage !== undefined) updateData.progress_percentage = data.progressPercentage;
+      if (data.timeSpentSeconds !== undefined) updateData.time_spent_seconds = data.timeSpentSeconds;
+      if (data.lastPositionSeconds !== undefined) updateData.last_position_seconds = data.lastPositionSeconds;
+      if (data.completionRating !== undefined) updateData.completion_rating = data.completionRating;
+      if (data.completionFeedback !== undefined) updateData.completion_feedback = data.completionFeedback;
+      if (data.status === 'completed') updateData.completed_at = now;
       
       const progress = await this.prisma.contentProgress.upsert({
         where: {
@@ -415,15 +339,15 @@ export class ContentRepository implements IContentRepository {
         create: {
           user_id: userId,
           content_id: contentId,
-          status: safeData.status.toUpperCase().replace('-', '_'),
-          progress_percentage: safeData.progressPercentage,
-          time_spent_seconds: safeData.timeSpentSeconds,
-          last_position_seconds: safeData.lastPositionSeconds,
-          completion_rating: safeData.completionRating,
-          completion_feedback: safeData.completionFeedback,
+          status: data.status ? statusMap[data.status] : UserProgressStatus.NOT_STARTED,
+          progress_percentage: data.progressPercentage || 0,
+          time_spent_seconds: data.timeSpentSeconds || 0,
+          last_position_seconds: data.lastPositionSeconds || 0,
+          completion_rating: data.completionRating,
+          completion_feedback: data.completionFeedback,
           first_accessed_at: now,
           last_accessed_at: now,
-          completed_at: safeData.status === 'completed' ? now : null,
+          completed_at: data.status === 'completed' ? now : null,
         },
         include: {
           content: {
@@ -435,21 +359,17 @@ export class ContentRepository implements IContentRepository {
         }
       });
 
-      if (!progress.content) {
-        throw new Error('Content not found for progress record');
-      }
-
       return {
         contentId: progress.content_id,
-        title: progress.content.title,
-        status: progress.status.toLowerCase().replace('_', '-') as any,
+        title: progress.content?.title || '',
+        status: progress.status.toLowerCase() as ProgressStatus,
         progressPercentage: progress.progress_percentage,
         timeSpentSeconds: progress.time_spent_seconds,
         lastPositionSeconds: progress.last_position_seconds,
         lastAccessedAt: progress.last_accessed_at,
         completedAt: progress.completed_at,
-        completionRating: progress.completion_rating ? Number(progress.completion_rating) : undefined,
-        completionFeedback: progress.completion_feedback ? String(progress.completion_feedback) : undefined,
+        completionRating: progress.completion_rating ? Number(progress.completion_rating) : null,
+        completionFeedback: progress.completion_feedback,
       };
     } catch (error) {
       logger.error(`Error tracking progress for user ${userId} and content ${contentId}:`, error);
@@ -472,7 +392,7 @@ export class ContentRepository implements IContentRepository {
           platform: interaction.platform,
           abandonment_reason: interaction.abandonmentReason,
           came_from: interaction.cameFrom,
-          metadata: interaction.metadata ? JSON.stringify(interaction.metadata) : Prisma.JsonNull,
+          metadata: interaction.metadata ? interaction.metadata : undefined,
         }
       });
 
@@ -497,73 +417,7 @@ export class ContentRepository implements IContentRepository {
     }
   }
 
-  async getUserInteractions(userId: string, contentId?: string): Promise<ContentInteractionLog[]> {
-    try {
-      const interactions = await this.prisma.contentInteractionLog.findMany({
-        where: {
-          user_id: userId,
-          ...(contentId && { content_id: contentId })
-        },
-        orderBy: { action_timestamp: 'desc' }
-      });
-
-      return interactions.map(interaction => ({
-        id: interaction.id,
-        userId: interaction.user_id,
-        contentId: interaction.content_id,
-        sessionId: interaction.session_id,
-        action: interaction.action as InteractionAction,
-        actionTimestamp: interaction.action_timestamp,
-        progressAtAction: interaction.progress_at_action ? Number(interaction.progress_at_action) : null,
-        timeSpentSeconds: interaction.time_spent_seconds,
-        deviceType: interaction.device_type as DeviceType | null,
-        platform: interaction.platform as PlatformType | null,
-        abandonmentReason: interaction.abandonment_reason as AbandonmentReason | null,
-        cameFrom: interaction.came_from as CameFromType | null,
-        metadata: interaction.metadata ? JSON.parse(interaction.metadata as string) : null,
-      }));
-    } catch (error) {
-      logger.error(`Error getting user interactions for user ${userId}:`, error);
-      throw error;
-    }
-  }
-
-  async getContentInteractions(contentId: string, action?: string): Promise<ContentInteractionLog[]> {
-    try {
-      const interactions = await this.prisma.contentInteractionLog.findMany({
-        where: {
-          content_id: contentId,
-          ...(action && { action })
-        },
-        orderBy: { action_timestamp: 'desc' }
-      });
-
-      return interactions.map(interaction => ({
-        id: interaction.id,
-        userId: interaction.user_id,
-        contentId: interaction.content_id,
-        sessionId: interaction.session_id,
-        action: interaction.action as InteractionAction,
-        actionTimestamp: interaction.action_timestamp,
-        progressAtAction: interaction.progress_at_action ? Number(interaction.progress_at_action) : null,
-        timeSpentSeconds: interaction.time_spent_seconds,
-        deviceType: interaction.device_type as DeviceType | null,
-        platform: interaction.platform as PlatformType | null,
-        abandonmentReason: interaction.abandonment_reason as AbandonmentReason | null,
-        cameFrom: interaction.came_from as CameFromType | null,
-        metadata: interaction.metadata ? JSON.parse(interaction.metadata as string) : null,
-      }));
-    } catch (error) {
-      logger.error(`Error getting content interactions for content ${contentId}:`, error);
-      throw error;
-    }
-  }
-
-  async trackInteraction(interaction: Omit<ContentInteractionLog, 'id' | 'actionTimestamp'>): Promise<ContentInteractionLog> {
-    return this.logInteraction(interaction);
-  }
-
-  // Content discovery
+  // ===== CONTENT DISCOVERY =====
   async findContentByTopic(topicId: string): Promise<ContentWithTopics[]> {
     try {
       const contents = await this.prisma.content.findMany({
@@ -644,7 +498,6 @@ export class ContentRepository implements IContentRepository {
 
   async findRelatedContent(contentId: string, limit = 5): Promise<ContentWithTopics[]> {
     try {
-      // Obtener los topics del contenido actual
       const contentTopics = await this.prisma.contentTopic.findMany({
         where: { content_id: contentId },
         select: { topic_id: true }
@@ -680,7 +533,7 @@ export class ContentRepository implements IContentRepository {
     }
   }
 
-  // User progress
+  // ===== USER PROGRESS =====
   async getUserProgressHistory(userId: string): Promise<UserProgress[]> {
     try {
       const progressList = await this.prisma.contentProgress.findMany({
@@ -692,13 +545,13 @@ export class ContentRepository implements IContentRepository {
       return progressList.map(progress => ({
         contentId: progress.content_id,
         title: progress.content.title,
-        status: progress.status as any,
+        status: progress.status.toLowerCase() as ProgressStatus,
         progressPercentage: progress.progress_percentage,
         timeSpentSeconds: progress.time_spent_seconds,
         lastPositionSeconds: progress.last_position_seconds,
         lastAccessedAt: progress.last_accessed_at,
         completedAt: progress.completed_at,
-        completionRating: progress.completion_rating,
+        completionRating: progress.completion_rating ? Number(progress.completion_rating) : null,
         completionFeedback: progress.completion_feedback,
       }));
     } catch (error) {
@@ -763,606 +616,7 @@ export class ContentRepository implements IContentRepository {
     }
   }
 
-  // Topic operations
-  async getAllTopics(): Promise<Prisma.TopicGetPayload<{}>[]> {
-    try {
-      const topics = await this.prisma.topic.findMany({
-        where: { is_active: true },
-        orderBy: { sort_order: 'asc' },
-        include: {
-          modules: {
-            where: { deleted_at: null },
-            include: {
-              topics: true
-            }
-          }
-        }
-      });
-
-      return topics.map(topic => ({
-        ...topic,
-        prerequisites: topic.prerequisites && typeof topic.prerequisites === 'string' ? JSON.parse(topic.prerequisites) : [],
-        modules: (topic.modules || []).map((module: Prisma.ModuleGetPayload<{}>) => ({
-          ...module,
-          topics: module.topics || []
-        }))
-      }));
-    } catch (error) {
-      logger.error('Error getting all topics:', error);
-      throw error;
-    }
-  }
-
-  async createTopic(data: Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { prerequisites?: string }): Promise<Topic> {
-    return this.prisma.topic.create({
-      data: {
-        ...data,
-        prerequisites: data.prerequisites || '[]',
-        sort_order: data.sort_order || 0
-      },
-      include: {
-        contentTopics: {
-          include: {
-            content: true
-          }
-        },
-        moduleTopics: {
-          include: {
-            module: true
-          }
-        }
-      }
-    });
-  }
-
-  async getTopicById(id: string): Promise<Topic | null> {
-    try {
-      const topic = await this.prisma.topic.findUnique({ 
-        where: { id },
-        include: { modules: true }
-      });
-
-      if (!topic) return null;
-
-      return {
-        id: topic.id,
-        name: topic.name,
-        description: topic.description,
-        slug: topic.slug,
-        icon_url: topic.icon_url,
-        color_hex: topic.color_hex,
-        category: topic.category,
-        difficulty_level: topic.difficulty_level as DifficultyLevel,
-        target_age_min: topic.target_age_min,
-        target_age_max: topic.target_age_max,
-        prerequisites: topic.prerequisites 
-          ? Array.isArray(topic.prerequisites) 
-            ? topic.prerequisites 
-            : JSON.parse(topic.prerequisites as string)
-          : [],
-        is_active: topic.is_active,
-        sort_order: topic.sort_order,
-        created_at: new Date(topic.created_at),
-        updated_at: new Date(topic.updated_at),
-        deleted_at: topic.deleted_at ? new Date(topic.deleted_at) : null,
-        created_by: topic.created_by,
-        updated_by: topic.updated_by,
-        modules: topic.modules || []
-      };
-    } catch (error) {
-      logger.error(`Error getting topic by id ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async updateTopic(id: string, data: Partial<Topic>): Promise<Topic> {
-    return this.prisma.topic.update({
-      where: { id },
-      data: {
-        ...data,
-        prerequisites: data.prerequisites || '[]',
-        sort_order: data.sort_order || 0
-      },
-      include: {
-        contentTopics: {
-          include: {
-            content: true
-          }
-        },
-        moduleTopics: {
-          include: {
-            module: true
-          }
-        }
-      }
-    });
-  }
-
-  async deleteTopic(id: string): Promise<boolean> {
-    try {
-      await this.prisma.topic.delete({ where: { id } });
-      return true;
-    } catch (error) {
-      logger.error(`Error deleting topic ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async findTopics(): Promise<Array<{ id: string; name: string }>> {
-    try {
-      const topics = await this.prisma.topic.findMany({
-        select: {
-          id: true,
-          name: true
-        },
-        where: {
-          deleted_at: null
-        }
-      });
-      return topics;
-    } catch (error) {
-      logger.error('Error finding topics:', error);
-      throw error;
-    }
-  }
-
-  async findTopicById(id: string): Promise<{ id: string; name: string } | null> {
-    try {
-      const topic = await this.prisma.topic.findUnique({
-        select: {
-          id: true,
-          name: true
-        },
-        where: {
-          id,
-          deleted_at: null
-        }
-      });
-      return topic;
-    } catch (error) {
-      logger.error('Error finding topic by id:', error);
-      throw error;
-    }
-  }
-
-  async createModule(data: Omit<Module, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { moduleTopics?: ModuleTopic[] }): Promise<Module> {
-    try {
-      const created = await this.prisma.module.create({
-        data: {
-          ...data,
-          moduleTopics: {
-            create: data.moduleTopics?.map(topic => ({
-              topicId: topic.id,
-              sort_order: topic.sort_order || 0,
-              topic: {
-                connect: { id: topic.id }
-              }
-            })) || []
-          }
-        },
-        include: {
-          moduleTopics: {
-            include: {
-              topic: true
-            }
-          }
-        }
-      });
-      return created;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async getAllModules(): Promise<Module[]> {
-    try {
-      const modules = await this.prisma.module.findMany({
-        where: { deleted_at: null },
-        include: {
-          moduleTopics: {
-            include: {
-              topic: true
-            }
-          }
-        }
-      });
-
-      return modules.map(module => ({
-        ...module,
-        topics: module.moduleTopics?.map(mt => mt.topic) || [],
-        content: module.content || []
-      }));
-    } catch (error) {
-      logger.error('Error getting all modules:', error);
-      throw error;
-    }
-  }
-
-  async updateModule(id: string, data: Partial<Module> & { moduleTopics?: ModuleTopic[] }): Promise<Module> {
-    try {
-      const updated = await this.prisma.module.update({
-        where: { id },
-        data: {
-          ...data,
-          moduleTopics: {
-            create: data.moduleTopics?.map(topic => ({
-              topicId: topic.id,
-              sort_order: topic.sort_order || 0,
-              topic: {
-                connect: { id: topic.id }
-              }
-            })) || []
-          }
-        },
-        include: {
-          moduleTopics: {
-            include: {
-              topic: true
-            }
-          }
-        }
-      });
-
-      return {
-        ...updated,
-        topics: updated.moduleTopics?.map(mt => mt.topic) || [],
-        content: updated.content || []
-        topics: []
-      };
-    } catch (error) {
-      logger.error('Error updating module:', error);
-      throw error;
-    }
-  }
-
-  async deleteModule(id: string): Promise<boolean> {
-    try {
-      await this.prisma.module.delete({ where: { id } });
-      return true;
-    } catch (error) {
-      logger.error('Error deleting module:', error);
-      throw error;
-    }
-  }
-
-  async addTopicToModule(moduleId: string, topicId: string): Promise<void> {
-    try {
-      await this.prisma.module.update({
-        where: { id: moduleId },
-        data: {
-          topics: {
-            connect: { id: topicId }
-          }
-        }
-      });
-    } catch (error) {
-      logger.error('Error adding topic to module:', error);
-      throw error;
-    }
-  }
-
-  async removeTopicFromModule(moduleId: string, topicId: string): Promise<void> {
-    try {
-      await this.prisma.module.update({
-        where: { id: moduleId },
-        data: {
-          topics: {
-            disconnect: { id: topicId }
-          }
-        }
-      });
-    } catch (error) {
-      logger.error('Error removing topic from module:', error);
-      throw error;
-    }
-  }
-
-  async createTopic(data: Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>): Promise<Topic> {
-    try {
-      const created = await this.prisma.topic.create({
-        data: {
-          ...data,
-          color_hex: data.color_hex ?? undefined,
-          prerequisites: JSON.stringify(data.prerequisites || []),
-        }
-      });
-
-      return {
-        ...created,
-        prerequisites: created.prerequisites && typeof created.prerequisites === 'string' ? JSON.parse(created.prerequisites) : []
-      };
-    } catch (error) {
-      logger.error('Error creating topic:', error);
-      throw error;
-    }
-  }
-
-  async getTopicById(id: string): Promise<Topic | null> {
-    try {
-      const topic = await this.prisma.topic.findUnique({ 
-        where: { id },
-        include: { modules: true }
-      });
-
-      if (!topic) return null;
-
-      return {
-        id: topic.id,
-        name: topic.name,
-        description: topic.description,
-        slug: topic.slug,
-        icon_url: topic.icon_url,
-        color_hex: topic.color_hex,
-        category: topic.category,
-        difficulty_level: topic.difficulty_level as DifficultyLevel,
-        target_age_min: topic.target_age_min,
-        target_age_max: topic.target_age_max,
-        prerequisites: topic.prerequisites 
-          ? Array.isArray(topic.prerequisites) 
-            ? topic.prerequisites 
-            : JSON.parse(topic.prerequisites as string)
-          : [],
-        is_active: topic.is_active,
-        sort_order: topic.sort_order,
-        created_at: new Date(topic.created_at),
-        updated_at: new Date(topic.updated_at),
-        deleted_at: topic.deleted_at ? new Date(topic.deleted_at) : null,
-        created_by: topic.created_by,
-        updated_by: topic.updated_by,
-        modules: topic.modules || []
-      };
-    } catch (error) {
-      logger.error(`Error getting topic by id ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async updateTopic(id: string, data: Partial<Topic>): Promise<Topic> {
-    try {
-      const updated = await this.prisma.topic.update({
-        where: { id },
-        data: {
-          ...data,
-          color_hex: data.color_hex ?? undefined,
-          prerequisites: data.prerequisites ? JSON.stringify(data.prerequisites) : undefined,
-          updated_at: new Date(),
-        }
-      });
-
-      return {
-        ...updated,
-        prerequisites: updated.prerequisites && typeof updated.prerequisites === 'string' ? JSON.parse(updated.prerequisites) : []
-      };
-    } catch (error) {
-      logger.error(`Error updating topic ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async deleteTopic(id: string): Promise<boolean> {
-    try {
-      await this.prisma.topic.delete({ where: { id } });
-      return true;
-    } catch (error) {
-      logger.error(`Error deleting topic ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async findTopics(): Promise<Array<{ id: string; name: string; }>> {
-    try {
-      const topics = await this.prisma.topic.findMany({
-        where: { is_active: true },
-        select: { id: true, name: true },
-        orderBy: { sort_order: 'asc' }
-      });
-
-      return topics;
-    } catch (error) {
-      logger.error('Error finding topics:', error);
-      throw error;
-    }
-  }
-
-  async findTopicById(id: string): Promise<{ id: string; name: string; } | null> {
-    try {
-      const topic = await this.prisma.topic.findUnique({
-        where: { id },
-        select: { id: true, name: true }
-      });
-
-      return topic;
-    } catch (error) {
-      logger.error(`Error finding topic by id ${id}:`, error);
-      throw error;
-    }
-  }
-
-  // Module operations
-  async findAllModules(): Promise<Array<{ id: string; name: string }>> {
-    try {
-      return await this.prisma.module.findMany({
-        select: { id: true, name: true }
-      });
-    } catch (error) {
-      logger.error('Error finding all modules:', error);
-      throw error;
-    }
-  }
-
-  async findModuleById(id: string): Promise<{ id: string; name: string } | null> {
-    try {
-      return await this.prisma.module.findUnique({
-        where: { id },
-        select: { id: true, name: true }
-      });
-    } catch (error) {
-      logger.error(`Error finding module by id ${id}:`, error);
-      throw error;
-    }
-  }
-
-  // Tip operations
-  async getAllTips(): Promise<Tip[]> {
-    try {
-      logger.info('Fetching all tips from database');
-      
-      const tips = await this.prisma.tip.findMany();
-      
-      // Validate each tip's ID format
-      const invalidTips = tips.filter(tip => !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tip.id));
-      
-      if (invalidTips.length > 0) {
-        logger.error(`Found ${invalidTips.length} tips with invalid UUID format:`, 
-          invalidTips.map(t => ({id: t.id, title: t.title})));
-      }
-      
-      return tips.map(tip => ({
-        id: tip.id,
-        title: tip.title,
-        content: tip.content,
-        tip_type: tip.tip_type || '',
-        category: null,
-        target_age_min: tip.target_age_min,
-        target_age_max: tip.target_age_max,
-        difficulty_level: tip.difficulty_level,
-        action_required: false,
-        action_instructions: null,
-        estimated_time_minutes: 0,
-        impact_level: 'MEDIUM',
-        source_url: null,
-        image_url: null,
-        is_active: true,
-        is_featured: false,
-        prerequisites: [],
-        related_tips: [],
-        valid_from: null,
-        valid_until: null,
-        usage_count: 0,
-        created_at: tip.created_at,
-        updated_at: tip.updated_at,
-        deleted_at: tip.deleted_at,
-        created_by: tip.created_by,
-        updated_by: tip.updated_by,
-        content_id: tip.content_id,
-        metadata: tip.metadata ? tip.metadata as Record<string, any> : {}
-      }));
-    } catch (error) {
-      logger.error('Error getting all tips:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
-      });
-      throw error;
-    }
-  }
-
-  async createTip(
-    data: Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { metadata?: Record<string, any> | null }
-  ): Promise<Tip> {
-    try {
-      const createdTip = await this.prisma.tip.create({
-        data: {
-          ...data,
-          metadata: data.metadata || {}
-        }
-      });
-
-      return {
-        ...createdTip,
-        metadata: createdTip.metadata ? createdTip.metadata as Record<string, any> : {}
-      };
-    } catch (error) {
-      logger.error('Error creating tip:', error);
-      throw error;
-    }
-  }
-
-  async getTipById(id: string): Promise<Tip | null> {
-    try {
-      if (!id?.trim()) {
-        throw new Error('ID del tip es requerido');
-      }
-
-      const tip = await this.prisma.tip.findUnique({
-        where: { id },
-      });
-
-      return tip ? {
-        id: tip.id,
-        title: tip.title,
-        content: tip.content,
-        tip_type: tip.tip_type || '',
-        category: null,
-        target_age_min: tip.target_age_min,
-        target_age_max: tip.target_age_max,
-        difficulty_level: tip.difficulty_level,
-        action_required: false,
-        action_instructions: null,
-        estimated_time_minutes: 0,
-        impact_level: 'MEDIUM',
-        source_url: null,
-        image_url: null,
-        is_active: true,
-        is_featured: false,
-        prerequisites: [],
-        related_tips: [],
-        valid_from: null,
-        valid_until: null,
-        usage_count: 0,
-        created_at: tip.created_at,
-        updated_at: tip.updated_at,
-        deleted_at: tip.deleted_at,
-        created_by: tip.created_by,
-        updated_by: tip.updated_by,
-        content_id: tip.content_id,
-        metadata: tip.metadata && typeof tip.metadata === 'string' ? JSON.parse(tip.metadata) : tip.metadata
-      } : null;
-    } catch (error) {
-      logger.error(`Error finding tip by id ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async updateTip(
-    id: string,
-    data: Partial<Omit<Tip, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>> & { 
-      metadata?: Record<string, any> | null | undefined 
-    }
-  ): Promise<Tip> {
-    try {
-      // Transform null content_id to undefined
-      const updateData = {
-        ...data,
-        content_id: data.content_id === null ? undefined : data.content_id,
-        metadata: data.metadata ? JSON.stringify(data.metadata) : Prisma.JsonNull
-      };
-
-      const updatedTip = await this.prisma.tip.update({
-        where: { id },
-        data: updateData
-      });
-
-      return {
-        ...updatedTip,
-        metadata: updatedTip.metadata && typeof updatedTip.metadata === 'string' ? JSON.parse(updatedTip.metadata) : null
-      };
-    } catch (error) {
-      logger.error(`Error updating tip ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async deleteTip(id: string): Promise<boolean> {
-    try {
-      await this.prisma.tip.delete({ where: { id } });
-      return true;
-    } catch (error) {
-      logger.error(`Error deleting tip ${id}:`, error);
-      throw error;
-    }
-  }
-
-  // Analytics (implementaciones básicas)
+  // ===== ANALYTICS =====
   async getContentAnalytics(contentId: string): Promise<ContentAnalytics> {
     try {
       const content = await this.prisma.content.findUnique({
@@ -1517,7 +771,7 @@ export class ContentRepository implements IContentRepository {
           _count: {
             select: {
               contentProgress: {
-                where: { status: 'completed' }
+                where: { status: 'COMPLETED' }
               }
             }
           }
@@ -1535,7 +789,7 @@ export class ContentRepository implements IContentRepository {
             contentId: content.id,
             title: content.title,
             completionRate,
-            avgAbandonmentPoint: 50, // Este sería calculado con más lógica
+            avgAbandonmentPoint: 50,
             priority: completionRate < 20 ? 'CRÍTICO' as const :
                      completionRate < 40 ? 'ALTO' as const :
                      completionRate < 60 ? 'MEDIO' as const : 'BAJO' as const,
@@ -1550,12 +804,36 @@ export class ContentRepository implements IContentRepository {
 
       return problematicContent;
     } catch (error) {
-      logger.error(`Error finding problematic content:`, error);
+      logger.error('Error finding problematic content:', error);
       throw error;
     }
   }
 
-  // Bulk operations
+  // ===== MODULE OPERATIONS =====
+  async findAllModules(): Promise<Array<{ id: string; name: string }>> {
+    try {
+      return await this.prisma.module.findMany({
+        select: { id: true, name: true },
+      });
+    } catch (error) {
+      logger.error('Error finding all modules:', error);
+      throw error;
+    }
+  }
+
+  async findModuleById(id: string): Promise<{ id: string; name: string } | null> {
+    try {
+      return await this.prisma.module.findUnique({
+        where: { id },
+        select: { id: true, name: true }
+      });
+    } catch (error) {
+      logger.error(`Error finding module by id ${id}:`, error);
+      throw error;
+    }
+  }
+
+  // ===== BULK OPERATIONS =====
   async bulkTrackProgress(progressData: Array<{
     userId: string;
     contentId: string;
@@ -1574,7 +852,7 @@ export class ContentRepository implements IContentRepository {
               }
             },
             update: {
-              status: data.status,
+              status: data.status.toUpperCase().replace(/-/g, '_') as keyof typeof UserProgressStatus,
               progress_percentage: data.progressPercentage,
               time_spent_seconds: data.timeSpentSeconds,
               last_accessed_at: new Date(),
@@ -1583,7 +861,7 @@ export class ContentRepository implements IContentRepository {
             create: {
               user_id: data.userId,
               content_id: data.contentId,
-              status: data.status,
+              status: data.status.toUpperCase().replace(/-/g, '_') as keyof typeof UserProgressStatus,
               progress_percentage: data.progressPercentage,
               time_spent_seconds: data.timeSpentSeconds,
               first_accessed_at: new Date(),
@@ -1612,6 +890,8 @@ export class ContentRepository implements IContentRepository {
           device_type: interaction.deviceType,
           platform: interaction.platform,
           abandonment_reason: interaction.abandonmentReason,
+          came_from: interaction.cameFrom,
+          metadata: interaction.metadata ? interaction.metadata : undefined,
         }))
       });
     } catch (error) {
@@ -1620,184 +900,77 @@ export class ContentRepository implements IContentRepository {
     }
   }
 
-  private transformToContentWithTopics(content: Prisma.ContentGetPayload<{
-    include: {
-      contentTopics: {
-        include: {
-          topic: {
-            include: {
-              moduleTopics: {
-                include: {
-                  module: {
-                    include: {
-                      moduleTopics: {
-                        include: {
-                          topic: {
-                            include: {
-                              contentTopics: {
-                                include: {
-                                  content: true
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }>): ContentWithTopics {
-    // Parse JSON fields
-    const parsedMetadata = content.metadata ? JSON.parse(content.metadata) : {};
-    const parsedTopics = content.contentTopics?.map((ct: Prisma.ContentTopicGetPayload<{
-      include: {
-        topic: {
-          include: {
-            moduleTopics: {
-              include: {
-                module: {
-                  include: {
-                    moduleTopics: {
-                      include: {
-                        topic: {
-                          include: {
-                            contentTopics: {
-                              include: {
-                                content: true
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }>) => ({
-      ...ct,
-      topic: {
-        ...ct.topic,
-        prerequisites: ct.topic.prerequisites ? JSON.parse(ct.topic.prerequisites) : [],
-        modules: ct.topic.moduleTopics?.map((mt: Prisma.ModuleTopicGetPayload<{
-          include: {
-            module: {
-              include: {
-                moduleTopics: {
-                  include: {
-                    topic: {
-                      include: {
-                        contentTopics: {
-                          include: {
-                            content: true
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }>) => ({
-          ...mt.module,
-          topics: mt.module.moduleTopics?.map((mtt: Prisma.ModuleTopicGetPayload<{
-            include: {
-              topic: {
-                include: {
-                  contentTopics: {
-                    include: {
-                      content: true
-                    }
-                  }
-                }
-              }
-            }
-          }>) => ({
-            ...mtt.topic,
-            contentTopics: mtt.topic.contentTopics?.map((ctt: Prisma.ContentTopicGetPayload<{
-              include: {
-                content: true
-              }
-            }>) => ({
-              ...ctt,
-              content: ctt.content
-            })) || []
-          })) || []
-        })) || []
-      }
-    })) || [];
-
+  // ===== PRIVATE HELPER METHODS =====
+  private transformToContent(content: any): Content {
     return {
-      ...content,
-      metadata: parsedMetadata,
-      contentTopics: parsedTopics,
-      contentProgress: content.contentProgress || [],
-      tips: content.tips?.map((tip: Prisma.TipGetPayload<{
-        include: {
-          metadata: true
-        }
-      }>) => ({
-        ...tip,
-        metadata: tip.metadata ? JSON.parse(tip.metadata) : {}
+      id: content.id,
+      title: content.title,
+      description: content.description,
+      content_type: content.content_type,
+      main_media_id: content.main_media_id,
+      thumbnail_media_id: content.thumbnail_media_id,
+      difficulty_level: content.difficulty_level,
+      target_age_min: content.target_age_min,
+      target_age_max: content.target_age_max,
+      reading_time_minutes: content.reading_time_minutes,
+      duration_minutes: content.duration_minutes,
+      is_downloadable: content.is_downloadable,
+      is_featured: content.is_featured,
+      is_published: content.is_published,
+      published_at: content.published_at,
+      view_count: content.view_count,
+      completion_count: content.completion_count,
+      rating_average: content.rating_average,
+      rating_count: content.rating_count,
+      metadata: content.metadata ? JSON.parse(content.metadata) : null,
+      created_at: content.created_at,
+      updated_at: content.updated_at,
+      deleted_at: content.deleted_at,
+      created_by: content.created_by,
+      updated_by: content.updated_by,
+      contentTopics: content.contentTopics || [],
+      moduleContent: content.moduleContent || [],
+      progress: content.progress || [],
+      tips: content.tips || []
+    };
+  }
+
+  private transformToContentWithTopics(content: any): ContentWithTopics {
+    const baseContent = this.transformToContent(content);
+    
+    return {
+      ...baseContent,
+      contentTopics: content.contentTopics?.map((ct: any) => ({
+        id: ct.id,
+        content_id: ct.content_id,
+        topic_id: ct.topic_id,
+        is_primary: ct.is_primary,
+        created_at: ct.created_at,
+        topic: ct.topic ? {
+          id: ct.topic.id,
+          name: ct.topic.name,
+          description: ct.topic.description,
+          slug: ct.topic.slug,
+          icon_url: ct.topic.icon_url,
+          color_hex: ct.topic.color_hex,
+          category: ct.topic.category,
+          difficulty_level: ct.topic.difficulty_level,
+          target_age_min: ct.topic.target_age_min,
+          target_age_max: ct.topic.target_age_max,
+          prerequisites: ct.topic.prerequisites ? JSON.parse(ct.topic.prerequisites) : [],
+          is_active: ct.topic.is_active,
+          sort_order: ct.topic.sort_order,
+          created_at: ct.topic.created_at,
+          updated_at: ct.topic.updated_at,
+          deleted_at: ct.topic.deleted_at,
+          created_by: ct.topic.created_by,
+          updated_by: ct.topic.updated_by
+        } : undefined
       })) || []
-    } as ContentWithTopics;
+    };
   }
 
-  async getContentById(id: string): Promise<ContentWithTopics | null> {
-    try {
-      const result = await this.prisma.content.findUnique({
-        where: { id },
-        include: {
-          contentTopics: {
-            include: {
-              topic: {
-                include: {
-                  moduleTopics: {
-                    include: {
-                      module: {
-                        include: {
-                          moduleTopics: {
-                            include: {
-                              topic: {
-                                include: {
-                                  contentTopics: {
-                                    include: {
-                                      content: true
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      });
-
-      return this.transformToContentWithTopics(result);
-    } catch (error) {
-      logger.error(`Error finding content by ID ${id}:`, error);
-      throw error;
-    }
-  }
-
-  private buildWhere(filters: ContentFilters): any {
+  private buildWhereClause(filters: ContentFilters): any {
     const where: any = {};
 
     if (filters.topicId) {
@@ -1812,11 +985,11 @@ export class ContentRepository implements IContentRepository {
     }
 
     if (filters.difficultyLevel) {
-      where.difficulty_level = this.mapDifficultyLevel(filters.difficultyLevel as string);
+      where.difficulty_level = filters.difficultyLevel;
     }
 
     if (filters.contentType) {
-      where.content_type = this.mapContentType(filters.contentType as string);
+      where.content_type = filters.contentType;
     }
 
     if (filters.isPublished !== undefined) {
@@ -1846,24 +1019,6 @@ export class ContentRepository implements IContentRepository {
   private buildOrderBy(filters: ContentFilters): any {
     const sortBy = filters.sortBy || 'created_at';
     const sortOrder = filters.sortOrder || 'desc';
-
     return { [sortBy]: sortOrder };
-  }
-
-  private mapContentType(contentType: string): ContentType {
-    const lowerType = contentType.toLowerCase();
-    switch (lowerType) {
-      case 'video': return 'VIDEO';
-      case 'article': return 'ARTICLE';
-      case 'quiz': return 'QUIZ';
-      case 'interactive': return 'INTERACTIVE';
-      case 'presentation': return 'INTERACTIVE';
-      case 'document': return 'ARTICLE';
-      default: return 'OTHER';
-    }
-  }
-
-  private mapDifficultyLevel(level: string): DifficultyLevel {
-    return DifficultyLevel[level.toUpperCase() as keyof typeof DifficultyLevel];
   }
 }

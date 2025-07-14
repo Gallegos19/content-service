@@ -1,3 +1,5 @@
+// src/infrastructure/config/container.ts
+
 import { Container } from 'inversify';
 import { TYPES } from '@shared/constants/types';
 import { Logger } from 'winston';
@@ -7,23 +9,9 @@ import { prisma } from '@infrastructure/database/database.utils';
 
 // Repositories - Infrastructure
 import { ContentRepository } from '@infrastructure/database/repositories/content.repository';
-import { ContentTopicRepository } from '@infrastructure/database/repositories/contentTopic.repository';
-import { ContentAnalyticsRepository } from '@infrastructure/database/repositories/contentAnalitycs.repository';
-import { ContentProgressRepository } from '@infrastructure/database/repositories/contentProgress.repository';
-import { ContentInteractionLogRepository } from '@infrastructure/database/repositories/contentInteractionLog.repository';
-import { UserTipsHistoryRepository } from '@infrastructure/database/repositories/userTipsHistory.repository';
-import { TipsRepository } from '@infrastructure/database/repositories/tips.repository';
-import { TopicRepository } from '@infrastructure/database/repositories/topic.repository';
 
 // Domain Interfaces
 import { IContentRepository } from '@domain/repositories/content.repository';
-import { IContentTopicRepository } from '@domain/repositories/contentTopic.repository';
-import { IContentAnalyticsRepository } from '@domain/repositories/contentAnalytics.repository';
-import { IContentProgressRepository } from '@domain/repositories/contentProgress.repository';
-import { IContentInteractionLogRepository } from '@domain/repositories/contentInteractionLog.repository';
-import { IUserTipsHistoryRepository } from '@domain/repositories/userTipsHistory.repository';
-import { ITipsRepository } from '@domain/repositories/tips.repository';
-import { ITopicRepository } from '@domain/repositories/topic.repository';
 
 // Services
 import { ContentService } from '@domain/services/content.service';
@@ -38,39 +26,8 @@ container.bind<PrismaClient>(TYPES.PrismaClient)
   .toConstantValue(prisma);
 
 // ===== REPOSITORIES =====
-
-// Content Repository (main one)
 container.bind<IContentRepository>(TYPES.ContentRepository)
   .to(ContentRepository)
-  .inSingletonScope();
-
-// Specialized Repositories
-container.bind<IContentTopicRepository>(TYPES.ContentTopicRepository)
-  .to(ContentTopicRepository)
-  .inSingletonScope();
-
-container.bind<IContentAnalyticsRepository>(TYPES.ContentAnalyticsRepository)
-  .to(ContentAnalyticsRepository)
-  .inSingletonScope();
-
-container.bind<IContentProgressRepository>(TYPES.ContentProgressRepository)
-  .to(ContentProgressRepository)
-  .inSingletonScope();
-
-container.bind<IContentInteractionLogRepository>(TYPES.ContentInteractionLogRepository)
-  .to(ContentInteractionLogRepository)
-  .inSingletonScope();
-
-container.bind<IUserTipsHistoryRepository>(TYPES.UserTipsHistoryRepository)
-  .to(UserTipsHistoryRepository)
-  .inSingletonScope();
-
-container.bind<ITipsRepository>(TYPES.TipsRepository)
-  .to(TipsRepository)
-  .inSingletonScope();
-
-container.bind<ITopicRepository>(TYPES.TopicRepository)
-  .to(TopicRepository)
   .inSingletonScope();
 
 // ===== SERVICES =====
