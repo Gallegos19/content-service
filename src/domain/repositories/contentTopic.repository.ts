@@ -1,14 +1,30 @@
 import { ContentTopic } from '../entities/content.entity';
+import { Content } from '../entities/content.entity';
+import { DifficultyLevel } from '@domain/entities/content.entity';
+
+export interface ContentWithTopics extends Content {
+  contentTopics: ContentTopic[];
+}
 
 export interface Topic {
   id: string;
   name: string;
-  description?: string;
-  color_hex?: string;
-  prerequisites?: string[];
-  created_at?: Date;
-  updated_at?: Date;
-  deleted_at?: Date | null;
+  description: string | null;
+  slug: string;
+  icon_url: string | null;
+  color_hex: string;
+  category: string | null;
+  difficulty_level: DifficultyLevel;
+  target_age_min: number;
+  target_age_max: number;
+  prerequisites: string[];
+  is_active: boolean;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+  created_by: string | null;
+  updated_by: string | null;
 }
 
 export interface IContentTopicRepository {
@@ -17,6 +33,7 @@ export interface IContentTopicRepository {
   removeTopicFromContent(contentId: string, topicId: string): Promise<void>;
   setPrimaryTopic(contentId: string, topicId: string): Promise<void>;
   getContentTopics(contentId: string): Promise<ContentTopic[]>;
+  findContentByTopic(topicId: string): Promise<ContentWithTopics[]>;
   
   // Topic CRUD methods
   findAllTopics(): Promise<Topic[]>;

@@ -13,6 +13,9 @@ import {
   ContentInteractionLog, 
   Tip, 
   Topic, 
+  Module, 
+  ModuleTopic, 
+  ContentTopic, 
   CameFromType
 } from '../../../domain/entities/content.entity';
 import { 
@@ -35,31 +38,90 @@ type PrismaTip = {
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
-  created_by: string | null;
-  updated_by: string | null;
-  content_id: string | null;
-  metadata: Record<string, any> | null;
-};
+}
 
-type TipWithMetadata = Omit<PrismaTip, 'metadata'> & { metadata: Record<string, any> };
+type TipWithMetadata = Prisma.TipGetPayload<{ include: { metadata: true } }>;
 
 @injectable()
 export class ContentRepository implements IContentRepository {
+  private prisma: PrismaClient;
+
   constructor(
-    @inject(TYPES.PrismaClient) private readonly prisma: PrismaClient
-  ) {}
+    @inject(TYPES.PrismaClient) prisma: PrismaClient
+  ) {
+    this.prisma = prisma;
+  }
 
   // Content CRUD operations
-  async create(data: Omit<Content, "id" | "created_at" | "updated_at" | "deleted_at">): Promise<Content> {
-    return this.prisma.content.create({
+   async create(data: Omit<Content, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { topic_ids?: string[] }): Promise<Content> {
+    const result = await this.prisma.content.create({
       data: {
         ...data,
-        metadata: data.metadata === null ? Prisma.JsonNull : data.metadata,
-        contentTopics: data.contentTopics ? {
-          create: data.contentTopics.map(topic => ({ topic_id: topic.topicId }))
-        } : undefined
+        metadata: data.metadata ? JSON.stringify(data.metadata) : '{}',
+        contentTopics: {
+          create: data.topic_ids?.map((topicId: string) => ({
+            topic: {
+              connect: { id: topicId }
+            },
+            is_primary: false
+          })) || []
+        },
+        tips: data.tips?.map((tip: Prisma.TipCreateInput) => ({
+          title: tip.title,
+          content: tip.content,
+          tip_type: tip.tip_type || 'daily',
+          category: tip.category,
+          target_age_min: tip.target_age_min || 8,
+          target_age_max: tip.target_age_max || 18,
+          difficulty_level: tip.difficulty_level || 'easy',
+          action_required: tip.action_required || false,
+          action_instructions: tip.action_instructions,
+          estimated_time_minutes: tip.estimated_time_minutes,
+          impact_level: tip.impact_level || 'medium',
+          source_url: tip.source_url,
+          image_url: tip.image_url
+        })) || []
+      },
+      include: {
+        contentTopics: {
+          include: {
+            topic: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+                target_age_min: true,
+                target_age_max: true,
+                difficulty_level: true,
+                is_active: true,
+                prerequisites: true,
+                sort_order: true
+              }
+            }
+          }
+        },
+        tips: {
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            tip_type: true,
+            category: true,
+            target_age_min: true,
+            target_age_max: true,
+            difficulty_level: true,
+            action_required: true,
+            action_instructions: true,
+            estimated_time_minutes: true,
+            impact_level: true,
+            source_url: true,
+            image_url: true,
+            metadata: true
+          }
+        }
       }
     });
+    return this.transformToContentWithTopics(result);
   }
 
   async findById(id: string): Promise<ContentWithTopics | null> {
@@ -650,7 +712,7 @@ export class ContentRepository implements IContentRepository {
       const completedProgress = await this.prisma.contentProgress.findMany({
         where: {
           user_id: userId,
-          status: 'completed'
+          status: 'COMPLETED'
         },
         include: {
           content: {
@@ -678,7 +740,7 @@ export class ContentRepository implements IContentRepository {
       const inProgressContent = await this.prisma.contentProgress.findMany({
         where: {
           user_id: userId,
-          status: 'in_progress'
+          status: 'IN_PROGRESS'
         },
         include: {
           content: {
@@ -702,19 +764,295 @@ export class ContentRepository implements IContentRepository {
   }
 
   // Topic operations
-  async getAllTopics(): Promise<Topic[]> {
+  async getAllTopics(): Promise<Prisma.TopicGetPayload<{}>[]> {
     try {
       const topics = await this.prisma.topic.findMany({
         where: { is_active: true },
-        orderBy: { sort_order: 'asc' }
+        orderBy: { sort_order: 'asc' },
+        include: {
+          modules: {
+            where: { deleted_at: null },
+            include: {
+              topics: true
+            }
+          }
+        }
       });
 
       return topics.map(topic => ({
         ...topic,
-        prerequisites: topic.prerequisites && typeof topic.prerequisites === 'string' ? JSON.parse(topic.prerequisites) : []
+        prerequisites: topic.prerequisites && typeof topic.prerequisites === 'string' ? JSON.parse(topic.prerequisites) : [],
+        modules: (topic.modules || []).map((module: Prisma.ModuleGetPayload<{}>) => ({
+          ...module,
+          topics: module.topics || []
+        }))
       }));
     } catch (error) {
       logger.error('Error getting all topics:', error);
+      throw error;
+    }
+  }
+
+  async createTopic(data: Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { prerequisites?: string }): Promise<Topic> {
+    return this.prisma.topic.create({
+      data: {
+        ...data,
+        prerequisites: data.prerequisites || '[]',
+        sort_order: data.sort_order || 0
+      },
+      include: {
+        contentTopics: {
+          include: {
+            content: true
+          }
+        },
+        moduleTopics: {
+          include: {
+            module: true
+          }
+        }
+      }
+    });
+  }
+
+  async getTopicById(id: string): Promise<Topic | null> {
+    try {
+      const topic = await this.prisma.topic.findUnique({ 
+        where: { id },
+        include: { modules: true }
+      });
+
+      if (!topic) return null;
+
+      return {
+        id: topic.id,
+        name: topic.name,
+        description: topic.description,
+        slug: topic.slug,
+        icon_url: topic.icon_url,
+        color_hex: topic.color_hex,
+        category: topic.category,
+        difficulty_level: topic.difficulty_level as DifficultyLevel,
+        target_age_min: topic.target_age_min,
+        target_age_max: topic.target_age_max,
+        prerequisites: topic.prerequisites 
+          ? Array.isArray(topic.prerequisites) 
+            ? topic.prerequisites 
+            : JSON.parse(topic.prerequisites as string)
+          : [],
+        is_active: topic.is_active,
+        sort_order: topic.sort_order,
+        created_at: new Date(topic.created_at),
+        updated_at: new Date(topic.updated_at),
+        deleted_at: topic.deleted_at ? new Date(topic.deleted_at) : null,
+        created_by: topic.created_by,
+        updated_by: topic.updated_by,
+        modules: topic.modules || []
+      };
+    } catch (error) {
+      logger.error(`Error getting topic by id ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async updateTopic(id: string, data: Partial<Topic>): Promise<Topic> {
+    return this.prisma.topic.update({
+      where: { id },
+      data: {
+        ...data,
+        prerequisites: data.prerequisites || '[]',
+        sort_order: data.sort_order || 0
+      },
+      include: {
+        contentTopics: {
+          include: {
+            content: true
+          }
+        },
+        moduleTopics: {
+          include: {
+            module: true
+          }
+        }
+      }
+    });
+  }
+
+  async deleteTopic(id: string): Promise<boolean> {
+    try {
+      await this.prisma.topic.delete({ where: { id } });
+      return true;
+    } catch (error) {
+      logger.error(`Error deleting topic ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async findTopics(): Promise<Array<{ id: string; name: string }>> {
+    try {
+      const topics = await this.prisma.topic.findMany({
+        select: {
+          id: true,
+          name: true
+        },
+        where: {
+          deleted_at: null
+        }
+      });
+      return topics;
+    } catch (error) {
+      logger.error('Error finding topics:', error);
+      throw error;
+    }
+  }
+
+  async findTopicById(id: string): Promise<{ id: string; name: string } | null> {
+    try {
+      const topic = await this.prisma.topic.findUnique({
+        select: {
+          id: true,
+          name: true
+        },
+        where: {
+          id,
+          deleted_at: null
+        }
+      });
+      return topic;
+    } catch (error) {
+      logger.error('Error finding topic by id:', error);
+      throw error;
+    }
+  }
+
+  async createModule(data: Omit<Module, 'id' | 'created_at' | 'updated_at' | 'deleted_at'> & { moduleTopics?: ModuleTopic[] }): Promise<Module> {
+    try {
+      const created = await this.prisma.module.create({
+        data: {
+          ...data,
+          moduleTopics: {
+            create: data.moduleTopics?.map(topic => ({
+              topicId: topic.id,
+              sort_order: topic.sort_order || 0,
+              topic: {
+                connect: { id: topic.id }
+              }
+            })) || []
+          }
+        },
+        include: {
+          moduleTopics: {
+            include: {
+              topic: true
+            }
+          }
+        }
+      });
+      return created;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getAllModules(): Promise<Module[]> {
+    try {
+      const modules = await this.prisma.module.findMany({
+        where: { deleted_at: null },
+        include: {
+          moduleTopics: {
+            include: {
+              topic: true
+            }
+          }
+        }
+      });
+
+      return modules.map(module => ({
+        ...module,
+        topics: module.moduleTopics?.map(mt => mt.topic) || [],
+        content: module.content || []
+      }));
+    } catch (error) {
+      logger.error('Error getting all modules:', error);
+      throw error;
+    }
+  }
+
+  async updateModule(id: string, data: Partial<Module> & { moduleTopics?: ModuleTopic[] }): Promise<Module> {
+    try {
+      const updated = await this.prisma.module.update({
+        where: { id },
+        data: {
+          ...data,
+          moduleTopics: {
+            create: data.moduleTopics?.map(topic => ({
+              topicId: topic.id,
+              sort_order: topic.sort_order || 0,
+              topic: {
+                connect: { id: topic.id }
+              }
+            })) || []
+          }
+        },
+        include: {
+          moduleTopics: {
+            include: {
+              topic: true
+            }
+          }
+        }
+      });
+
+      return {
+        ...updated,
+        topics: updated.moduleTopics?.map(mt => mt.topic) || [],
+        content: updated.content || []
+        topics: []
+      };
+    } catch (error) {
+      logger.error('Error updating module:', error);
+      throw error;
+    }
+  }
+
+  async deleteModule(id: string): Promise<boolean> {
+    try {
+      await this.prisma.module.delete({ where: { id } });
+      return true;
+    } catch (error) {
+      logger.error('Error deleting module:', error);
+      throw error;
+    }
+  }
+
+  async addTopicToModule(moduleId: string, topicId: string): Promise<void> {
+    try {
+      await this.prisma.module.update({
+        where: { id: moduleId },
+        data: {
+          topics: {
+            connect: { id: topicId }
+          }
+        }
+      });
+    } catch (error) {
+      logger.error('Error adding topic to module:', error);
+      throw error;
+    }
+  }
+
+  async removeTopicFromModule(moduleId: string, topicId: string): Promise<void> {
+    try {
+      await this.prisma.module.update({
+        where: { id: moduleId },
+        data: {
+          topics: {
+            disconnect: { id: topicId }
+          }
+        }
+      });
+    } catch (error) {
+      logger.error('Error removing topic from module:', error);
       throw error;
     }
   }
@@ -741,15 +1079,37 @@ export class ContentRepository implements IContentRepository {
 
   async getTopicById(id: string): Promise<Topic | null> {
     try {
-      const topic = await this.prisma.topic.findUnique({
-        where: { id }
+      const topic = await this.prisma.topic.findUnique({ 
+        where: { id },
+        include: { modules: true }
       });
 
       if (!topic) return null;
 
       return {
-        ...topic,
-        prerequisites: topic.prerequisites && typeof topic.prerequisites === 'string' ? JSON.parse(topic.prerequisites) : []
+        id: topic.id,
+        name: topic.name,
+        description: topic.description,
+        slug: topic.slug,
+        icon_url: topic.icon_url,
+        color_hex: topic.color_hex,
+        category: topic.category,
+        difficulty_level: topic.difficulty_level as DifficultyLevel,
+        target_age_min: topic.target_age_min,
+        target_age_max: topic.target_age_max,
+        prerequisites: topic.prerequisites 
+          ? Array.isArray(topic.prerequisites) 
+            ? topic.prerequisites 
+            : JSON.parse(topic.prerequisites as string)
+          : [],
+        is_active: topic.is_active,
+        sort_order: topic.sort_order,
+        created_at: new Date(topic.created_at),
+        updated_at: new Date(topic.updated_at),
+        deleted_at: topic.deleted_at ? new Date(topic.deleted_at) : null,
+        created_by: topic.created_by,
+        updated_by: topic.updated_by,
+        modules: topic.modules || []
       };
     } catch (error) {
       logger.error(`Error getting topic by id ${id}:`, error);
@@ -757,7 +1117,7 @@ export class ContentRepository implements IContentRepository {
     }
   }
 
-  async updateTopic(id: string, data: Partial<Omit<Topic, 'id' | 'created_at' | 'updated_at' | 'deleted_at'>>): Promise<Topic> {
+  async updateTopic(id: string, data: Partial<Topic>): Promise<Topic> {
     try {
       const updated = await this.prisma.topic.update({
         where: { id },
@@ -1252,8 +1612,6 @@ export class ContentRepository implements IContentRepository {
           device_type: interaction.deviceType,
           platform: interaction.platform,
           abandonment_reason: interaction.abandonmentReason,
-          came_from: interaction.cameFrom,
-          metadata: interaction.metadata ? JSON.stringify(interaction.metadata) : Prisma.JsonNull,
         }))
       });
     } catch (error) {
@@ -1262,35 +1620,185 @@ export class ContentRepository implements IContentRepository {
     }
   }
 
-  // Private helper methods
-  private transformToContent(content: any): Content {
-    return {
-      ...content,
-      metadata: content.metadata && typeof content.metadata === 'string' ? JSON.parse(content.metadata) : content.metadata,
-      contentTopics: content.contentTopics || []
-    };
-  }
-
-  private transformToContentWithTopics(content: any): ContentWithTopics {
-    return {
-      ...content,
-      metadata: content.metadata && typeof content.metadata === 'string' ? JSON.parse(content.metadata) : content.metadata,
-      contentTopics: content.contentTopics?.map((ct: any) => ({
-        ...ct,
-        topic: ct.topic ? {
-          ...ct.topic,
-          prerequisites: ct.topic.prerequisites && typeof ct.topic.prerequisites === 'string' ? JSON.parse(ct.topic.prerequisites) : []
-        } : undefined
-      })) || []
-    };
-  }
-
-  private buildWhereClause(filters: ContentFilters): any {
-    const where: any = {};
-
-    if (filters.contentIds?.length) {
-      where.id = { in: filters.contentIds };
+  private transformToContentWithTopics(content: Prisma.ContentGetPayload<{
+    include: {
+      contentTopics: {
+        include: {
+          topic: {
+            include: {
+              moduleTopics: {
+                include: {
+                  module: {
+                    include: {
+                      moduleTopics: {
+                        include: {
+                          topic: {
+                            include: {
+                              contentTopics: {
+                                include: {
+                                  content: true
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
+  }>): ContentWithTopics {
+    // Parse JSON fields
+    const parsedMetadata = content.metadata ? JSON.parse(content.metadata) : {};
+    const parsedTopics = content.contentTopics?.map((ct: Prisma.ContentTopicGetPayload<{
+      include: {
+        topic: {
+          include: {
+            moduleTopics: {
+              include: {
+                module: {
+                  include: {
+                    moduleTopics: {
+                      include: {
+                        topic: {
+                          include: {
+                            contentTopics: {
+                              include: {
+                                content: true
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }>) => ({
+      ...ct,
+      topic: {
+        ...ct.topic,
+        prerequisites: ct.topic.prerequisites ? JSON.parse(ct.topic.prerequisites) : [],
+        modules: ct.topic.moduleTopics?.map((mt: Prisma.ModuleTopicGetPayload<{
+          include: {
+            module: {
+              include: {
+                moduleTopics: {
+                  include: {
+                    topic: {
+                      include: {
+                        contentTopics: {
+                          include: {
+                            content: true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }>) => ({
+          ...mt.module,
+          topics: mt.module.moduleTopics?.map((mtt: Prisma.ModuleTopicGetPayload<{
+            include: {
+              topic: {
+                include: {
+                  contentTopics: {
+                    include: {
+                      content: true
+                    }
+                  }
+                }
+              }
+            }
+          }>) => ({
+            ...mtt.topic,
+            contentTopics: mtt.topic.contentTopics?.map((ctt: Prisma.ContentTopicGetPayload<{
+              include: {
+                content: true
+              }
+            }>) => ({
+              ...ctt,
+              content: ctt.content
+            })) || []
+          })) || []
+        })) || []
+      }
+    })) || [];
+
+    return {
+      ...content,
+      metadata: parsedMetadata,
+      contentTopics: parsedTopics,
+      contentProgress: content.contentProgress || [],
+      tips: content.tips?.map((tip: Prisma.TipGetPayload<{
+        include: {
+          metadata: true
+        }
+      }>) => ({
+        ...tip,
+        metadata: tip.metadata ? JSON.parse(tip.metadata) : {}
+      })) || []
+    } as ContentWithTopics;
+  }
+
+  async getContentById(id: string): Promise<ContentWithTopics | null> {
+    try {
+      const result = await this.prisma.content.findUnique({
+        where: { id },
+        include: {
+          contentTopics: {
+            include: {
+              topic: {
+                include: {
+                  moduleTopics: {
+                    include: {
+                      module: {
+                        include: {
+                          moduleTopics: {
+                            include: {
+                              topic: {
+                                include: {
+                                  contentTopics: {
+                                    include: {
+                                      content: true
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      return this.transformToContentWithTopics(result);
+    } catch (error) {
+      logger.error(`Error finding content by ID ${id}:`, error);
+      throw error;
+    }
+  }
+
+  private buildWhere(filters: ContentFilters): any {
+    const where: any = {};
 
     if (filters.topicId) {
       where.contentTopics = {

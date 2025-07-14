@@ -55,7 +55,56 @@ model Topic {
   deleted_at       DateTime?       @db.Timestamptz(6)
   created_by       String?         @db.Uuid
   updated_by       String?         @db.Uuid
+
   contentTopics    ContentTopic[]
+  moduleTopics     ModuleTopic[]
+}
+
+
+model Module {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String          @db.VarChar(200)
+  description      String?         @db.Text
+  is_active        Boolean         @default(true)
+  created_at       DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime        @default(now()) @db.Timestamptz(6)
+  deleted_at       DateTime?       @db.Timestamptz(6)
+  created_by       String?         @db.Uuid
+  updated_by       String?         @db.Uuid
+
+  moduleTopics     ModuleTopic[]   @relation("ModuleToTopics")
+  moduleContent    ModuleContent[] @relation("ModuleToContent")
+}
+
+
+model ModuleTopic {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  module_id  String   @db.Uuid
+  topic_id   String   @db.Uuid
+  sort_order Int      @default(0)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  module  Module  @relation("ModuleToTopics", fields: [module_id], references: [id], onDelete: Cascade)
+  topic   Topic   @relation(fields: [topic_id], references: [id], onDelete: Cascade)
+
+  @@unique([module_id, topic_id])
+  @@index([module_id])
+  @@index([topic_id])
+}
+
+model ModuleContent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  module_id  String   @db.Uuid
+  content_id String   @db.Uuid
+  sort_order Int      @default(0)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  module  Module  @relation("ModuleToContent", fields: [module_id], references: [id], onDelete: Cascade)
+  content Content @relation("ModuleToContent", fields: [content_id], references: [id], onDelete: Cascade)
+
+  @@unique([module_id, content_id])
+  @@index([module_id])
+  @@index([content_id])
 }
 
 model Content {
@@ -85,14 +134,16 @@ model Content {
   created_by           String?         @db.Uuid
   updated_by           String?         @db.Uuid
 
-  contentTopics   ContentTopic[]    @relation("ContentToTopics")
-  contentProgress ContentProgress[] @relation("ContentToProgress")
-  tips            Tip[]             @relation(name: "ContentToTips")
+  moduleContent    ModuleContent[]   @relation("ModuleToContent")
+  contentTopics    ContentTopic[]    @relation("ContentToTopics")
+  contentProgress  ContentProgress[] @relation("ContentToProgress")
+  tips             Tip[]             @relation(name: "ContentToTips")
 
   @@index([content_type])
   @@index([is_published])
   @@index([created_at])
 }
+
 
 model ContentTopic {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -110,20 +161,20 @@ model ContentTopic {
 }
 
 model ContentProgress {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id               String    @db.Uuid
-  content_id            String    @db.Uuid
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id               String             @db.Uuid
+  content_id            String             @db.Uuid
   status                UserProgressStatus @default(NOT_STARTED)
-  progress_percentage   Int       @default(0)
-  time_spent_seconds    Int       @default(0)
-  last_position_seconds Int       @default(0)
+  progress_percentage   Int                @default(0)
+  time_spent_seconds    Int                @default(0)
+  last_position_seconds Int                @default(0)
   completion_rating     Int?
-  completion_feedback   String?   @db.Text
-  first_accessed_at     DateTime? @db.Timestamptz(6)
-  last_accessed_at      DateTime? @db.Timestamptz(6)
-  completed_at          DateTime? @db.Timestamptz(6)
-  created_at            DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime  @default(now()) @db.Timestamptz(6)
+  completion_feedback   String?            @db.Text
+  first_accessed_at     DateTime?          @db.Timestamptz(6)
+  last_accessed_at      DateTime?          @db.Timestamptz(6)
+  completed_at          DateTime?          @db.Timestamptz(6)
+  created_at            DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime           @default(now()) @db.Timestamptz(6)
 
   content Content @relation("ContentToProgress", fields: [content_id], references: [id], onDelete: Cascade)
 
@@ -199,11 +250,4 @@ model ContentInteractionLog {
   @@index([session_id])
   @@index([action])
   @@index([action_timestamp])
-}
-
-model Module {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name       String   @db.VarChar(200)
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  updated_at DateTime @default(now()) @db.Timestamptz(6)
 }

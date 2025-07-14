@@ -1,7 +1,7 @@
 // Dependency injection tokens
 import { Container } from 'inversify';
 import { PrismaClient, Prisma } from '@prisma/client';
-import { Content, Tip, Topic } from '@domain/entities/content.entity';
+import { Content, Tip } from '@domain/entities/content.entity';
 
 export const TYPES = {
   // Repositories
@@ -15,7 +15,6 @@ export const TYPES = {
   TopicRepository: Symbol.for('TopicRepository'),
   TipsRepository: Symbol.for('TipsRepository'),
   ContentTopicRepository: Symbol.for('ContentTopicRepository'),
-  ModuleRepository: Symbol.for('ModuleRepository'),
   ContentAnalyticsRepository: Symbol.for('ContentAnalyticsRepository'),
   ContentInteractionRepository: Symbol.for('ContentInteractionRepository'),
   
@@ -216,3 +215,37 @@ export type TipUpdateInput = Prisma.TipUpdateInput;
 // Importar tipos de contenido y enums según sea necesario
 // Los tipos específicos se importarán directamente en los archivos que los necesiten
 // para evitar conflictos de reexportación
+
+export enum DifficultyLevel {
+  BEGINNER = 'BEGINNER',
+  INTERMEDIATE = 'INTERMEDIATE',
+  ADVANCED = 'ADVANCED'
+}
+
+export interface Topic {
+  id?: string;
+  title: string;
+  description?: string;
+  difficulty_level: DifficultyLevel;
+  target_age_min?: number;
+  target_age_max?: number;
+  prerequisites?: any[];
+  is_active?: boolean;
+  sort_order?: number;
+  created_at?: Date;
+  updated_at?: Date;
+  deleted_at?: Date | null;
+  created_by?: string;
+  updated_by?: string
+}
+
+export interface ContentTopic {
+  id: string;
+  contentId: string;
+  topicId: string;
+  isPrimary: boolean;
+  createdAt: Date;
+  deletedAt?: Date | null;
+  topic?: Topic;
+  content?: Content;
+}

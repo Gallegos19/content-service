@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { IContentTopicRepository, ContentTopic, Topic } from '@domain/repositories/contentTopic.repository';
+import { IContentTopicRepository, ContentWithTopics } from '@domain/repositories/contentTopic.repository';
+import { ContentTopic } from '@domain/entities/contentTopic.entity';
+import { DifficultyLevel, Topic } from '@domain/entities/content.entity';
 
 const prisma = new PrismaClient();
 
@@ -125,16 +127,71 @@ export class ContentTopicRepository implements IContentTopicRepository {
     await prisma.topic.delete({ where: { id } });
   }
 
+  async findContentByTopic(topicId: string): Promise<ContentWithTopics[]> {
+    const dbContentTopics = await prisma.contentTopic.findMany({
+      where: { topic_id: topicId },
+      include: {
+        content: true,
+        topic: true
+      }
+    });
+
+    // Group by content ID and create ContentWithTopics structure
+    const contentMap = new Map<string, ContentWithTopics>();
+    
+    dbContentTopics.forEach(dbContentTopic => {
+      const contentId = dbContentTopic.content_id;
+      
+      if (!contentMap.has(contentId)) {
+        contentMap.set(contentId, {
+          ...dbContentTopic.content,
+          contentTopics: []
+        });
+      }
+      
+      contentMap.get(contentId)!.contentTopics.push({
+        id: dbContentTopic.id,
+        contentId: dbContentTopic.content_id,
+        topicId: dbContentTopic.topic_id,
+        isPrimary: dbContentTopic.is_primary,
+        createdAt: dbContentTopic.created_at,
+        topic: dbContentTopic.topic
+      });
+    });
+
+    return Array.from(contentMap.values());
+  }
+
   private toDomainTopic(dbTopic: any): Topic {
+    // Convert prerequisites from JSON string to array
+    const prerequisites = dbTopic.prerequisites 
+      ? typeof dbTopic.prerequisites === 'string' 
+        ? JSON.parse(dbTopic.prerequisites as string)
+        : Array.isArray(dbTopic.prerequisites) 
+          ? dbTopic.prerequisites 
+          : []
+      : [];
+
     return {
       id: dbTopic.id,
       name: dbTopic.name,
       description: dbTopic.description,
-      color_hex: dbTopic.color_hex,
-      prerequisites: dbTopic.prerequisites,
-      created_at: dbTopic.created_at,
-      updated_at: dbTopic.updated_at,
-      deleted_at: dbTopic.deleted_at
+      slug: dbTopic.slug,
+      icon_url: dbTopic.icon_url,
+      color_hex: dbTopic.color_hex || '#000000',
+      category: dbTopic.category,
+      difficulty_level: dbTopic.difficulty_level as DifficultyLevel,
+      target_age_min: dbTopic.target_age_min,
+      target_age_max: dbTopic.target_age_max,
+      prerequisites: prerequisites as string[],
+      is_active: dbTopic.is_active ?? true,
+      sort_order: dbTopic.sort_order ?? 0,
+      created_at: new Date(dbTopic.created_at),
+      updated_at: new Date(dbTopic.updated_at),
+      deleted_at: dbTopic.deleted_at ? new Date(dbTopic.deleted_at) : null,
+      created_by: dbTopic.created_by,
+      updated_by: dbTopic.updated_by,
+      modules: dbTopic.modules || []
     };
   }
 
@@ -150,3 +207,4 @@ export class ContentTopicRepository implements IContentTopicRepository {
     };
   }
 }
+ 

@@ -29,19 +29,17 @@ import { IUserTipsHistoryRepository } from '@domain/repositories/userTipsHistory
 import { IContentProgressRepository } from '@domain/repositories/contentProgress.repository';
 import { ITipsRepository } from '@domain/repositories/tips.repository';
 import { IContentTopicRepository } from '../repositories/contentTopic.repository';
-import { IModuleRepository } from '../repositories/module.repository';
 import { IContentAnalyticsRepository } from '../repositories/contentAnalytics.repository';
 
 @injectable()
 export class ContentService {
   constructor(
     @inject(TYPES.ContentRepository) private contentRepository: IContentRepository,
-    @inject(TYPES.ContentInteractionLogRepository) private contentInteractionLogRepository: IContentInteractionRepository,
+    @inject(TYPES.ContentInteractionLogRepository) private contentInteractionLogRepository: IContentInteractionLogRepository,
     @inject(TYPES.UserTipsHistoryRepository) private userTipsHistoryRepository: IUserTipsHistoryRepository,
     @inject(TYPES.ContentProgressRepository) private contentProgressRepository: IContentProgressRepository,
     @inject(TYPES.TipsRepository) private tipRepository: ITipsRepository,
     @inject(TYPES.ContentTopicRepository) private contentTopicRepository: IContentTopicRepository,
-    @inject(TYPES.ModuleRepository) private moduleRepository: IModuleRepository,
     @inject(TYPES.ContentAnalyticsRepository) private contentAnalyticsRepository: IContentAnalyticsRepository
   ) { }
 
@@ -78,7 +76,7 @@ export class ContentService {
       }
 
       logger.info(`Finding content by topic: ${topicId}`);
-      return await this.contentRepository.findContentByTopic(topicId);
+      return await this.contentTopicRepository.findContentByTopic(topicId);
     } catch (error) {
       logger.error(`Error finding content by topic ${topicId}:`, error);
       throw error;
@@ -270,7 +268,7 @@ export class ContentService {
       }
 
       logger.info(`Getting effectiveness analytics for content: ${contentId}`);
-      return await this.contentRepository.getEffectivenessAnalytics(contentId);
+      return await this.contentAnalyticsRepository.getEffectivenessAnalytics(contentId);
     } catch (error) {
       logger.error(`Error getting effectiveness analytics for ${contentId}:`, error);
       throw error;
@@ -376,11 +374,7 @@ export class ContentService {
   async getAllTopics(): Promise<Topic[]> {
     try {
       logger.info('Getting all topics');
-      const topics = await this.contentTopicRepository.findAllTopics();
-      return topics.map((topic: Topic) => ({
-        ...topic,
-        color_hex: topic.color_hex || '#000000'
-      }));
+      return await this.contentTopicRepository.findAllTopics();
     } catch (error) {
       logger.error('Error getting all topics:', error);
       throw error;
@@ -407,7 +401,6 @@ export class ContentService {
       logger.info(`Creating topic: ${data.name}`);
       return await this.contentTopicRepository.createTopic({
         ...data,
-        deleted_at: null,
         prerequisites: Array.isArray(data.prerequisites) 
           ? data.prerequisites.filter(p => typeof p === 'string')
           : []
@@ -453,17 +446,18 @@ export class ContentService {
         }
       }
 
+      // Ensure prerequisites is a string array
+      const safePrerequisites = data.prerequisites 
+        ? (Array.isArray(data.prerequisites) 
+            ? data.prerequisites.filter(p => typeof p === 'string') 
+            : [])
+        : undefined;
+
       logger.info(`Updating topic: ${id}`);
-      const updateData: Partial<Topic> = {
+      return this.contentTopicRepository.updateTopic(id, {
         ...data,
-        name: data.name || '',
-        slug: data.slug || '',
-        color_hex: data.color_hex === null ? undefined : data.color_hex || '#000000',
-        prerequisites: data.prerequisites && Array.isArray(data.prerequisites) 
-          ? data.prerequisites.filter(Boolean) as string[] 
-          : undefined
-      };
-      return await this.contentTopicRepository.updateTopic(id, updateData);
+        prerequisites: safePrerequisites
+      });
     } catch (error) {
       logger.error(`Error updating topic ${id}:`, error);
       throw error;
